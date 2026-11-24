@@ -30,6 +30,15 @@ def calculate_news_weight(
     Returns:
         float: 计算出的权重值
     """
+    # Fork addition: items collected through Bright Data are ranked by
+    # freshness + engagement + recurrence (see trendradar/core/ranking.py).
+    if weight_config.get("MODE", "brightdata") == "brightdata":
+        from trendradar.core.ranking import lookup_score
+
+        bd_score = lookup_score(title_data.get("url", ""))
+        if bd_score is not None:
+            return bd_score
+
     ranks = title_data.get("ranks", [])
     if not ranks:
         return 0.0

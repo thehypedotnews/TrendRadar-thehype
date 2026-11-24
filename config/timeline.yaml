@@ -1,204 +1,207 @@
 # ═══════════════════════════════════════════════════════════════
-#                   TrendRadar 时间线配置
+#                   TrendRadar Timeline Configuration
 #                      Version: 1.3.0
 # ═══════════════════════════════════════════════════════════════
 #
-# 这个文件控制「什么时间做什么事」。
+# This file controls "what to do, and when".
 #
-# 大多数人不需要编辑这个文件。
-# 只需在 config.yaml 中选择一个预设模板即可：
+# Most people don't need to edit this file.
+# Just pick a preset template in config.yaml:
 #
 #   schedule:
-#     preset: "morning_evening"    ← 改这里就行
+#     preset: "morning_evening"    ← change it here
 #
 #
-# 可视化配置编辑器地址: https://sansan0.github.io/TrendRadar/
+# Visual config editor: https://sansan0.github.io/TrendRadar/
 #
 #
 # ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-# 📖 基本概念（帮助你理解后面的配置）
+# 📖 Core concepts (to help you understand the config below)
 # ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 #
 #
-# 🔁 程序是怎么运行的？
+# 🔁 How does the program run?
 #
-#   TrendRadar 不是一直在后台运行的，而是被「定时闹钟」周期性唤醒：
+#   TrendRadar doesn't run in the background constantly; it's woken up periodically by a "timer alarm":
 #
-#     GitHub Actions 用户 → 由 .github/workflows/crawler.yml 中的 cron 定时触发
-#                           默认每小时运行一次（如每小时第 33 分钟）
+#     GitHub Actions users → triggered by the cron in .github/workflows/crawler.yml
+#                           runs once per hour by default (e.g. at minute 33 of each hour)
 #
-#     Docker 用户         → 由 docker/.env 中的 CRON_SCHEDULE 定时触发
-#                           默认每 30 分钟运行一次
+#     Docker users         → triggered by CRON_SCHEDULE in docker/.env
+#                           runs every 30 minutes by default
 #
-#   每次被唤醒后，程序按以下三个阶段依次执行：
+#   Each time it's woken, the program runs through three phases in order:
 #
-#     1️⃣ 采集（collect）
-#        爬取各热榜平台 + RSS 订阅源 + 联网搜索（联网搜索也可用 search / once.search 单独控频），存入数据库
+#     1️⃣ Collect
+#        Crawl the latest data from hot-list platforms + RSS feeds + Web Search
+#        (Web Search can also be scheduled separately via search / once.search), store it in the database
 #
 #                  ⬇
 #
-#     2️⃣ 分析（analyze）
-#        调用 AI 大模型对采集到的新闻进行深度分析（可选，需配置 API Key）
+#     2️⃣ Analyze
+#        Call an AI model to deeply analyze the collected news (optional; needs an API key)
 #
 #                  ⬇
 #
-#     3️⃣ 推送（push）
-#        将整理好的热点新闻 + AI 分析结果发送到你的通知渠道
-#        （飞书、钉钉、Telegram、邮件等）
+#     3️⃣ Push
+#        Send the organized hot news + AI analysis to your notification channels
+#        (Feishu, DingTalk, Telegram, email, etc.)
 #
-#   这三个阶段都可以独立开关。本文件的作用就是控制：
-#   「在什么时间段，开启/关闭哪些阶段」。
-#
-#
-# 🔌 config.yaml 总开关 与 timeline 时间段开关 的关系
-#
-#   config.yaml 里有几个「总开关」，它们的优先级高于本文件：
-#
-#     platforms.enabled: false   → 永远不爬热榜（无论 timeline 怎么设置）
-#     rss.enabled: false         → 永远不爬 RSS（同上）
-#     web_search.enabled: false  → 永远不执行联网搜索（同上）
-#     notification.enabled: false → 永远不推送（同上）
-#     ai_analysis.enabled: false  → 永远不分析（同上）
-#
-#   只有当总开关为 true 时，timeline 的时间段开关才会生效。
-#   换句话说：总开关决定「能不能做」，timeline 决定「什么时候做」。
+#   All three phases can be toggled independently. This file controls:
+#   "in which time periods, which phases are on/off".
 #
 #
-# ⏰ 什么是「时间段」和「静默期」？
+# 🔌 Master switches in config.yaml vs. timeline period switches
 #
-#   你可以把一天想象成一条时间线，上面划分了若干个「时间段」。
-#   每个时间段有自己的行为开关（是否采集、是否分析、是否推送）。
+#   config.yaml has several "master switches" that take precedence over this file:
 #
-#   而不在任何时间段内的时间，就叫「静默期」（走 default 默认配置）。
-#   静默期通常必须要采集，这样数据一直在积累，
-#   等到推送时，就能汇总出完整的报告。
+#     platforms.enabled: false   → never crawl hot lists (regardless of timeline)
+#     rss.enabled: false         → never crawl RSS (same)
+#     web_search.enabled: false  → never run web search (same)
+#     notification.enabled: false → never push (same)
+#     ai_analysis.enabled: false  → never analyze (same)
+#
+#   A period switch only takes effect when its master switch is true.
+#   In other words: the master switch decides "can it happen"; timeline decides "when".
 #
 #
-#   💡 静默期越长，积累的数据越丰富（排名变化轨迹、上榜/下榜时间等），
-#   最终提交给 AI 分析的上下文也越完整，分析质量更高。
-#   相比 MCP Server，该方案的全天数据能呈现更完整的热度趋势和变化脉络。
+# ⏰ What are "periods" and "silent periods"?
+#
+#   Picture a day as a timeline divided into several "periods".
+#   Each period has its own behavior toggles (collect? analyze? push?).
+#
+#   Time not inside any period is a "silent period" (uses the default config).
+#   Silent periods must usually still collect, so data keeps accumulating,
+#   and when it's time to push, a complete report can be assembled.
+#
+#
+#   💡 The longer the silent periods, the richer the accumulated data (rank trajectories,
+#   entry/exit times, etc.), and the more complete the context fed to the AI for analysis,
+#   yielding higher-quality analysis. Compared to the MCP Server, this approach's all-day data
+#   shows fuller hotness trends and change arcs.
 #
 #
 # ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
-# 📋 预设模板一览（选一个就行）
+# 📋 Preset templates at a glance (just pick one)
 # ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─
 #
-#   1️⃣ always_on        全天候，有新增就推（默认）
-#   2️⃣ morning_evening  全天推送 + 晚间汇总（推荐大多数人）
-#   3️⃣ office_hours     工作日三段式：到岗速览→午间热点→收工汇总
-#   4️⃣ night_owl        午后速览 + 深夜全天汇总
-#   5️⃣ custom           完全自定义（需要编辑本文件底部的 custom 段）
+#   1️⃣ always_on        Always on, push whenever there's new (default)
+#   2️⃣ morning_evening  Push all day + an evening summary (recommended for most)
+#   3️⃣ office_hours     Three-block workday: onboarding brief → noon hot → wrap-up summary
+#   4️⃣ night_owl        Afternoon brief + late-night full-day summary
+#   5️⃣ custom           Fully custom (edit the custom section at the bottom of this file)
 #
-# 想自定义？两种方式：
-#   1. 直接翻到本文件底部的「自定义模式」部分
-#   2. 在下方 presets 里新增你自己的预设模板
-#      （只要 key 不重复，然后在 config.yaml 里填你的模板名即可）
+# Want to customize? Two ways:
+#   1. Jump straight to the "Custom mode" section at the bottom of this file
+#   2. Add your own preset template in the presets below
+#      (just keep the key unique, then put your template name in config.yaml)
 #
-# ⚠️ 关于时间段设计的建议：
-#   GitHub Actions： 建议定时任务间隔 ≥ 2 小时。由于系统触发存在随机延迟，间隔过短可能导致任务漏运行。
-#   Docker 用户：cron 定时是准时的，无此限制，按需设置即可。
+# ⚠️ Notes on period design:
+#   GitHub Actions: a timer interval ≥ 2 hours is recommended. Since system triggers have random
+#   latency, too-short intervals may cause missed runs.
+#   Docker users: cron timing is exact, no such limit; set as needed.
 #
 #
 # ═══════════════════════════════════════════════════════════════
 
 
 # ───────────────────────────────────────────────────────────────
-# 预设模板
+# Preset templates
 # ───────────────────────────────────────────────────────────────
 presets:
 
   # ───────────────────────────────────────────────────────────
-  # 1️⃣ always_on - 全天候监控
+  # 1️⃣ always_on - always-on monitoring
   #
-  # 最简单的模式：全天候采集 + 推送，有新增就通知你。
-  # 不划分时间段，全天使用同一套配置。
-  # 适合：重度用户、实时舆情监控
+  # Simplest mode: collect + push all day; notify you as soon as anything new appears.
+  # No periods; one config for the whole day.
+  # For: power users, real-time public-opinion monitoring
   #
-  # 全天：推送 ✓ | AI分析 ✗ | 不限推送次数
+  # All day: push ✓ | AI analysis ✗ | unlimited pushes
   # ───────────────────────────────────────────────────────────
   always_on:
-    name: "全天监控"
-    description: "全天候监控，有新增立即推送。适合重度用户。"
+    name: "Always-on Monitoring"
+    description: "Monitors all day; pushes immediately on anything new. For power users."
 
-    # 默认配置 ── 不在任何时间段内时，使用这组开关
-    # 因为这个模式没有划分时间段，所以 default 就是全天的行为
+    # Default config ── used when not inside any period
+    # Since this mode has no periods, default is the all-day behavior
     default:
-      collect: true                # 采集数据（爬取热榜 + RSS）
-      analyze: false               # 不做 AI 分析（节省 API 费用）
-      ai_mode: "current"           # AI 分析当前榜单
-      push: true                   # 有新内容就推送
-      report_mode: "incremental"   # 只推送新增内容，避免重复
-      once:                        # 限制每个时间段内只执行一次
-        analyze: false             #   不限制分析次数
-        push: false                #   不限制推送次数
+      collect: true                # Collect data (crawl hot lists + RSS)
+      analyze: false               # No AI analysis (saves API cost)
+      ai_mode: "current"           # AI analyzes the current ranking
+      push: true                   # Push when there's new content
+      report_mode: "incremental"   # Push only new content to avoid duplication
+      once:                        # Limit to once per period
+        analyze: false             #   no limit on analysis count
+        push: false                #   no limit on push count
 
-    # 没有定义任何时间段，全天都走 default
+    # No periods defined; the whole day uses default
     #
-    # 语法提示：{} 是 YAML 的「空字典」写法，表示里面没有任何内容。
-    # 等价于写成多行但什么都不填。后面的 [] 同理，表示「空列表」。
+    # Syntax note: {} is YAML's "empty map", meaning nothing inside.
+    # It's equivalent to writing it multi-line but filling in nothing. [] below is the same, an "empty list".
     periods: {}
     day_plans:
       all_day:
-        periods: []                   # 空列表 = 这天不启用任何时间段
+        periods: []                   # Empty list = no periods active this day
     week_map:
-      1: "all_day"                 # 周一
-      2: "all_day"                 # 周二
-      3: "all_day"                 # 周三
-      4: "all_day"                 # 周四
-      5: "all_day"                 # 周五
-      6: "all_day"                 # 周六
-      7: "all_day"                 # 周日
+      1: "all_day"                 # Mon
+      2: "all_day"                 # Tue
+      3: "all_day"                 # Wed
+      4: "all_day"                 # Thu
+      5: "all_day"                 # Fri
+      6: "all_day"                 # Sat
+      7: "all_day"                 # Sun
 
 
   # ───────────────────────────────────────────────────────────
-  # 2️⃣ morning_evening - 早晚汇总（推荐）
+  # 2️⃣ morning_evening - morning/evening summary (recommended)
   #
-  # 全天推送当前热点 + 晚间做一次当日全天汇总。
-  # 适合：大多数人
+  # Push current hotspots all day + a full-day summary in the evening.
+  # For: most people
   #
-  # 默认（全天）：推送 ✓ | AI分析 ✓ | 不限推送次数
-  # 晚间汇总：推送 ✓ | AI分析 ✓ | 只推/分析一次
+  # Default (all day): push ✓ | AI analysis ✓ | unlimited pushes
+  # Evening summary: push ✓ | AI analysis ✓ | push/analyze once
   # ───────────────────────────────────────────────────────────
   morning_evening:
-    name: "早晚汇总"
-    description: "全天推送 + 晚间当日汇总。适合大多数人。"
+    name: "Morning/Evening Summary"
+    description: "Push all day + an evening same-day summary. For most people."
 
-    # 默认配置 ── 不命中任何时间段时的行为
+    # Default config ── behavior when no period matches
     default:
-      collect: true                # 始终采集
-      analyze: true                # AI 分析当前榜单
-      ai_mode: "current"           # AI 分析当前榜单
-      push: true                   # 每次推送当前在榜热点
-      report_mode: "current"       # 当前在榜的新闻
-      # frequency_file: "xxx.txt"               # 关键词文件（可选，位于 config/custom/keyword/）
-      # interests_file: "xxx.txt"                # AI 兴趣文件（可选，位于 config/custom/ai/）
-      # filter_method: "keyword"                # 筛选策略（可选: keyword | ai，不填用全局 filter.method）
+      collect: true                # Always collect
+      analyze: true                # AI analyzes the current ranking
+      ai_mode: "current"           # AI analyzes the current ranking
+      push: true                   # Push current on-list hotspots each time
+      report_mode: "current"       # Currently-on-list news
+      # frequency_file: "xxx.txt"               # Keyword file (optional, in config/custom/keyword/)
+      # interests_file: "xxx.txt"                # AI interest file (optional, in config/custom/ai/)
+      # filter_method: "keyword"                # Filter strategy (optional: keyword | ai; empty → global filter.method)
       once:
-        analyze: false             # 不限制分析次数
-        push: false                # 不限制推送次数
+        analyze: false             # No limit on analysis count
+        push: false                # No limit on push count
 
-    # 时间段定义 ── 只有晚间汇总需要特殊处理
+    # Period definitions ── only the evening summary needs special handling
     periods:
       evening_summary:
-        name: "晚间汇总"
+        name: "Evening Summary"
         start: "20:00"
         end: "22:00"
-        # frequency_file: "xxx.txt"               # 关键词文件（可选，位于 config/custom/keyword/）
-        # interests_file: "xxx.txt"                # AI 兴趣文件（可选，位于 config/custom/ai/）
-        # filter_method: "keyword"                # 筛选策略（可选: keyword | ai，不填用全局 filter.method）
-        analyze: true              # 晚间做 AI 分析
-        ai_mode: "daily"           # AI 也汇总全天内容
-        report_mode: "daily"       # 切换为当日全部新闻汇总
+        # frequency_file: "xxx.txt"               # Keyword file (optional, in config/custom/keyword/)
+        # interests_file: "xxx.txt"                # AI interest file (optional, in config/custom/ai/)
+        # filter_method: "keyword"                # Filter strategy (optional: keyword | ai; empty → global filter.method)
+        analyze: true              # AI analysis in the evening
+        ai_mode: "daily"           # AI summarizes the whole day
+        report_mode: "daily"       # Switch to all-news-of-the-day summary
         once:
-          analyze: true            # 窗口内只分析一次
-          push: true               # 窗口内只推送一次
+          analyze: true            # Analyze once within the window
+          push: true               # Push once within the window
 
-    # 日计划 ── 把时间段组装成一天的安排
+    # Day plan ── assemble periods into a day's schedule
     day_plans:
       all_day:
         periods: ["evening_summary"]
 
-    # 周映射 ── 每天用哪个日计划（1=周一 ... 7=周日）
+    # Week map ── which day plan each day uses (1=Mon ... 7=Sun)
     week_map:
       1: "all_day"
       2: "all_day"
@@ -210,102 +213,102 @@ presets:
 
 
   # ───────────────────────────────────────────────────────────
-  # 3️⃣ office_hours - 办公时间推送
+  # 3️⃣ office_hours - office-hours push
   #
-  # 工作日三段式推送，周末增量自由推。
-  # 适合：上班族、企业用户
+  # Three-block push on workdays, free incremental on weekends.
+  # For: office workers, enterprise users
   #
-  # 默认（静默期）：推送 ✗ | AI分析 ✗
-  # 到岗速览：推送 ✓ | AI分析 ✓ | 只推一次
-  # 午间热点：推送 ✓ | AI分析 ✗ | 只推一次
-  # 收工汇总：推送 ✓ | AI分析 ✓ | 只推一次
-  # 周末自由：推送 ✓ | AI分析 ✗ | 不限推送次数
+  # Default (silent): push ✗ | AI analysis ✗
+  # Onboarding brief: push ✓ | AI analysis ✓ | once
+  # Noon hot: push ✓ | AI analysis ✗ | once
+  # Wrap-up summary: push ✓ | AI analysis ✓ | once
+  # Weekend free: push ✓ | AI analysis ✗ | unlimited pushes
   # ───────────────────────────────────────────────────────────
   office_hours:
-    name: "办公时间"
-    description: "工作日三段式推送（到岗→午间→收工），周末增量自由推送。"
+    name: "Office Hours"
+    description: "Three-block workday push (onboarding → noon → wrap-up); free incremental on weekends."
 
     default:
       collect: true
       analyze: false
       ai_mode: "current"
-      push: false                  # 默认不推送
+      push: false                  # No push by default
       report_mode: "current"
       once:
-        analyze: true              # 每个时段只分析一次
-        push: true                 # 每个时段只推送一次
+        analyze: true              # Analyze once per period
+        push: true                 # Push once per period
 
     periods:
       morning_briefing:
-        name: "到岗速览"
+        name: "Morning Briefing"
         start: "09:00"
         end: "11:00"
-        analyze: true              # AI 分析当前热点
-        ai_mode: "current"         # AI 分析当前榜单
-        push: true                 # 到岗后看当前热点
-        report_mode: "current"     # 当前在榜的新闻
-        # once 继承 default（analyze: true, push: true）→ 只推/分析一次
+        analyze: true              # AI analyzes current hotspots
+        ai_mode: "current"         # AI analyzes the current ranking
+        push: true                 # See current hotspots after arriving
+        report_mode: "current"     # Currently-on-list news
+        # once inherits default (analyze: true, push: true) → push/analyze once
 
       noon_update:
-        name: "午间热点"
+        name: "Noon Hot"
         start: "13:00"
         end: "15:00"
-        push: true                 # 午间推送当前在榜热点
-        report_mode: "current"     # 当前在榜的新闻
-        # analyze 继承 default: false → 午间不做 AI 分析，节省 API
-        # once 继承 default（push: true）→ 只推一次
+        push: true                 # Push current on-list hotspots at noon
+        report_mode: "current"     # Currently-on-list news
+        # analyze inherits default: false → no AI analysis at noon, saves API
+        # once inherits default (push: true) → push once
 
       closing_summary:
-        name: "收工汇总"
+        name: "Wrap-up Summary"
         start: "17:00"
         end: "19:00"
-        analyze: true              # AI 做全天汇总分析
-        ai_mode: "daily"           # AI 也分析全天内容
-        push: true                 # 下班前推送当日完整汇总
-        report_mode: "daily"       # 当日全部新闻汇总
-        # once 继承 default（analyze: true, push: true）→ 只推/分析一次
+        analyze: true              # AI does a full-day summary analysis
+        ai_mode: "daily"           # AI analyzes the whole day
+        push: true                 # Push the full same-day summary before leaving
+        report_mode: "daily"       # All-news-of-the-day summary
+        # once inherits default (analyze: true, push: true) → push/analyze once
 
       weekend_free:
-        name: "周末自由"
+        name: "Weekend Free"
         start: "08:00"
         end: "23:00"
-        ai_mode: "current"         # AI 分析当前榜单
-        push: true                 # 有新增就推送
-        report_mode: "incremental" # 增量模式：有新增才推，没有就安静
+        ai_mode: "current"         # AI analyzes the current ranking
+        push: true                 # Push when there's new
+        report_mode: "incremental" # Incremental: push only on new; otherwise quiet
         once:
-          analyze: false           # 不限制分析次数
-          push: false              # 不限制推送次数
+          analyze: false           # No limit on analysis count
+          push: false              # No limit on push count
 
-    # 工作日使用三段式推送；周末使用增量自由模式
+    # Workdays use the three-block push; weekends use the free incremental mode
     day_plans:
       workday:
         periods: ["morning_briefing", "noon_update", "closing_summary"]
       weekend:
-        periods: ["weekend_free"]  # 周末：有新增就推，不打扰睡眠
+        periods: ["weekend_free"]  # Weekend: push only new content; avoids disturbing sleep
 
     week_map:
-      1: "workday"                 # 周一 → 工作日计划
+      1: "workday"                 # Mon → workday plan
       2: "workday"
       3: "workday"
       4: "workday"
       5: "workday"
-      6: "weekend"                 # 周六 → 周末计划
-      7: "weekend"                 # 周日 → 周末计划
+      6: "weekend"                 # Sat → weekend plan
+      7: "weekend"                 # Sun → weekend plan
 
 
   # ───────────────────────────────────────────────────────────
-  # 4️⃣ night_owl - 夜猫子模式
+  # 4️⃣ night_owl - night-owl mode
   #
-  # 白天安静，午后和深夜各推一次。
-  # 适合：夜间工作者、海外时差用户、自由职业者
+  # Quiet by day; one push each in the afternoon and late at night.
+  # For: night workers, users in different time zones, freelancers
   #
-  # 默认（白天静默）：推送 ✗ | AI分析 ✗
-  # 午后速览：推送 ✓ | AI分析 ✓ | 只推一次
-  # 深夜汇总：推送 ✓ | AI分析 ✓ | 只推一次
+  # Default (day silent): push ✗ | AI analysis ✗
+  # Afternoon brief: push ✓ | AI analysis ✓ | once
+  # Late-night summary: push ✓ | AI analysis ✓ | once
   # ───────────────────────────────────────────────────────────
   night_owl:
-    name: "夜猫子模式"
-    description: "午后速览 + 深夜全天汇总。适合夜间工作者、海外时差用户。"
+    name: "Night Owl"
+    description: "Afternoon brief + late-night full-day summary. For night workers and international users."
 
     default:
       collect: true
@@ -314,29 +317,29 @@ presets:
       push: false
       report_mode: "current"
       once:
-        analyze: true              # 每个时段只分析一次
-        push: true                 # 每个时段只推送一次
+        analyze: true              # Analyze once per period
+        push: true                 # Push once per period
 
     periods:
       afternoon_peek:
-        name: "午后速览"
+        name: "Afternoon Brief"
         start: "15:00"
         end: "17:00"
-        analyze: true              # AI 分析当前热点
-        ai_mode: "current"         # AI 分析当前榜单
-        push: true                 # 午后看当前热点
-        report_mode: "current"     # 当前在榜的新闻
-        # once 继承 default（analyze: true, push: true）→ 只推/分析一次
+        analyze: true              # AI analyzes current hotspots
+        ai_mode: "current"         # AI analyzes the current ranking
+        push: true                 # See current hotspots in the afternoon
+        report_mode: "current"     # Currently-on-list news
+        # once inherits default (analyze: true, push: true) → push/analyze once
 
       late_night:
-        name: "深夜汇总"
+        name: "Late-night Summary"
         start: "22:00"
-        end: "01:00"               # start > end → 自动识别为跨日
-        analyze: true              # AI 做全天汇总分析
-        ai_mode: "daily"           # AI 也分析全天内容
-        push: true                 # 深夜推送当日完整汇总
-        report_mode: "daily"       # 当日全部新闻汇总
-        # once 继承 default（analyze: true, push: true）→ 只推/分析一次
+        end: "01:00"               # start > end → auto-detected as cross-midnight
+        analyze: true              # AI does a full-day summary analysis
+        ai_mode: "daily"           # AI analyzes the whole day
+        push: true                 # Push the full same-day summary late at night
+        report_mode: "daily"       # All-news-of-the-day summary
+        # once inherits default (analyze: true, push: true) → push/analyze once
 
     day_plans:
       all_day:
@@ -353,212 +356,210 @@ presets:
 
 # ═══════════════════════════════════════════════════════════════
 #
-# 5️⃣ 自定义模式
+# 5️⃣ Custom Mode
 #
-# 当 config.yaml 中设置 schedule.preset: "custom" 时，
-# 系统会读取下面这段配置。
+# When config.yaml sets schedule.preset: "custom",
+# the system reads the config block below.
 #
-# 如果上面的预设模板无法满足你的需求，可以在这里自由定义。
+# If the presets above don't fit your needs, define your own freely here.
 #
 # ═══════════════════════════════════════════════════════════════
 #
-# 自定义配置的思路很简单，就像搭积木：
+# The idea behind a custom config is simple — like building blocks:
 #
-#   第 1 步：定义「积木块」（periods）
-#            每块积木 = 一个时间段 + 这段时间要做什么
-#            例如：早间 08-10 推送、晚间 19-21 汇总
+#   Step 1: Define "blocks" (periods)
+#            Each block = a time period + what to do in it
+#            e.g. morning 08-10 push, evening 19-21 summary
 #
-#   第 2 步：拼成「一天的安排」（day_plans）
-#            把积木块组合起来，形成一天的日程
-#            例如：工作日用 [早间, 晚间]，周末用 [晚间]
+#   Step 2: Assemble "a day's plan" (day_plans)
+#            Combine blocks into a day's schedule
+#            e.g. workday uses [morning, evening], weekend uses [evening]
 #
-#   第 3 步：指定「每天用哪个安排」（week_map）
-#            周一到周日，分别对应哪个日计划
-#            例如：周一~周五用 workday，周六周日用 weekend
+#   Step 3: Assign "which plan each day uses" (week_map)
+#            Mon–Sun each map to a day plan
+#            e.g. Mon–Fri use workday, Sat–Sun use weekend
 #
-#   另外还有一个「默认配置」（default），
-#   当某个时刻不在任何积木块内时，就用默认配置。
-#   积木块里没写的字段，也会自动回退到默认配置。
+#   There's also a "default config" — used when a moment isn't inside any block.
+#   Fields not written inside a block also fall back to the default.
 #
 #
-# 下面是一个完整的自定义示例，工作日和周末使用不同的时间段安排：
+# Below is a full custom example with different schedules for workdays and weekends:
 #
-#   工作日时间段:
-#     深夜静默 23:00-06:00（跨日）：采集 ✓ | 分析 ✓ | 推送 ✗
-#     工作日早间 08:00-10:00：推送 ✓ | incremental
-#     晚间汇总 19:00-21:00：推送 ✓ | 分析 ✓ | daily
-#     其余时间走默认配置（静默采集）
+#   Workday periods:
+#     Late-night quiet 23:00-06:00 (cross-midnight): collect ✓ | analyze ✓ | push ✗
+#     Workday morning 08:00-10:00: push ✓ | incremental
+#     Evening summary 19:00-21:00: push ✓ | analyze ✓ | daily
+#     Other times use the default config (silent collect)
 #
-#   周末时间段:
-#     深夜静默 23:00-06:00（跨日）：采集 ✓ | 分析 ✓ | 推送 ✗
-#     周末早间 10:00-12:00：推送 ✓ | daily
-#     晚间汇总 19:00-21:00：推送 ✓ | 分析 ✓ | daily
-#     其余时间走默认配置（静默采集）
+#   Weekend periods:
+#     Late-night quiet 23:00-06:00 (cross-midnight): collect ✓ | analyze ✓ | push ✗
+#     Weekend morning 10:00-12:00: push ✓ | daily
+#     Evening summary 19:00-21:00: push ✓ | analyze ✓ | daily
+#     Other times use the default config (silent collect)
 
 custom:
-  name: "自定义"
-  description: "完全自由定义时间段、日计划和周映射。"
+  name: "Custom"
+  description: "Freely define periods, day plans, and the week map."
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 默认配置
+  # Default config
   #
-  # 当前时刻不在任何时间段（积木块）内时，使用这组开关。
-  # 时间段中没有写的字段，也会回退到这里。
+  # Used when the current moment isn't inside any period (block).
+  # Fields not written in a period also fall back here.
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   default:
-    collect: true                  # 是否采集数据（爬取热榜 + RSS）
-    analyze: false                 # 是否执行 AI 分析
-    ai_mode: "current"            # AI 分析模式:
-                                   #   follow_report → 跟随 report_mode
-                                   #   daily         → 强制全天汇总
-                                   #   current       → 强制当前榜单
-                                   #   incremental   → 强制增量模式
-    push: false                    # 是否发送推送通知
-    report_mode: "current"         # 报告模式:
-                                   #   daily       → 当日所有新闻的汇总
-                                   #   current     → 当前在榜的新闻
-                                   #   incremental → 只推送新增内容
+    collect: true                  # Collect data (crawl hot lists + RSS)
+    analyze: false                 # Run AI analysis
+    ai_mode: "current"            # AI analysis mode:
+                                   #   follow_report → follow report_mode
+                                   #   daily         → force full-day summary
+                                   #   current       → force current ranking
+                                   #   incremental   → force incremental mode
+    push: false                    # Send push notifications
+    report_mode: "current"         # Report mode:
+                                   #   daily       → summary of all news of the day
+                                   #   current     → currently-on-list news
+                                   #   incremental → push only new content
 
-                                   
+
     # frequency_file: "general.txt"
-                                   # 关键词文件（可选，位于 config/custom/keyword/）
-                                   # 不填则使用默认的 config/frequency_words.txt
-                                   # 时间段（period）中也可以设置此字段来覆盖默认值
-                                   # 例如晚间汇总用科技词库：
+                                   # Keyword file (optional, in config/custom/keyword/)
+                                   # Empty → uses the default config/frequency_words.txt
+                                   # A period can also set this to override the default
+                                   # e.g. the evening summary uses a tech keyword library:
                                    #   frequency_file: "tech.txt"
-                                   # 注意：仅在 filter_method 为 keyword 时生效
-                                   
-    # interests_file: "finance.txt"
-                                   # AI 兴趣描述文件（可选，位于 config/custom/ai/）
-                                   # 不填则使用默认的 config/ai_interests.txt
-                                   # 时间段（period）中也可以设置此字段来覆盖默认值
-                                   # 例如晚间汇总用金融兴趣：
-                                   #   interests_file: "finance.txt"
-                                   # 注意：仅在 filter_method 为 ai 时生效
+                                   # Note: only effective when filter_method is keyword
 
-    # filter_method: "keyword"     # 筛选策略（可选: keyword | ai）
-                                   # 不填则使用全局 config.yaml 的 filter.method
-                                   # 时间段（period）中也可以设置此字段来覆盖
-                                   # 例如晚间汇总用 AI 筛选：
+    # interests_file: "finance.txt"
+                                   # AI interest description file (optional, in config/custom/ai/)
+                                   # Empty → uses the default config/ai_interests.txt
+                                   # A period can also set this to override the default
+                                   # e.g. the evening summary uses finance interests:
+                                   #   interests_file: "finance.txt"
+                                   # Note: only effective when filter_method is ai
+
+    # filter_method: "keyword"     # Filter strategy (optional: keyword | ai)
+                                   # Empty → uses the global config.yaml filter.method
+                                   # A period can also set this to override
+                                   # e.g. the evening summary uses AI filtering:
                                    #   filter_method: "ai"
 
-    # search: true                 # 是否在这个时间段执行联网搜索（可选，不填则跟着 collect 走）
-                                   # 例如静默期不想花搜索额度，可以设 search: false，只在早晚时段设 search: true
-    # search_file: "policy.txt"    # 联网搜索任务文件（可选，位于 config/custom/search/，不填用默认的 search_queries.txt）
+    # search: true                 # Run web search in this period (optional; follows collect if omitted)
+    # search_file: "policy.txt"    # Custom web search queries file (in config/custom/search/)
     once:
-      analyze: true                # 该时间段内只分析一次（省 API）
-      push: true                   # 该时间段内只推送一次（省打扰）
-      # search: true               # 该时间段内只执行一次联网搜索（省搜索额度）
+      analyze: true                # Analyze once within the period (saves API cost)
+      push: true                   # Push once within the period (fewer interruptions)
+      # search: true               # Run web search only once within the period (saves search quota)
 
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 第 1 步：定义积木块（时间段）
+  # Step 1: Define blocks (periods)
   #
-  # 每个时间段有一个唯一的 key（如 deep_quiet），
-  # 以及 start / end 表示生效的时间范围。
+  # Each period has a unique key (e.g. deep_quiet),
+  # and start / end for its active time range.
   #
-  # 只需要写「和 default 不同的字段」，其余自动继承 default。
-  # 例如 weekday_morning 没写 collect，就会继承 default 的 collect: true。
+  # Only write "fields that differ from default"; the rest inherit default.
+  # e.g. weekday_morning doesn't write collect, so it inherits default's collect: true.
   #
-  # 提示：如果 start > end（如 22:00 → 07:00），
-  #       系统会自动识别为跨越午夜的时间段。
+  # Tip: if start > end (e.g. 22:00 → 07:00),
+  #       it's auto-detected as a cross-midnight period.
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   periods:
 
     deep_quiet:
-      name: "深夜静默"
+      name: "Late-night Quiet"
       start: "23:00"
-      end: "06:00"                 # 23:00 → 次日 06:00（跨日时间段）
-      # frequency_file: "xxx.txt"               # 关键词文件（可选，位于 config/custom/keyword/）
-      # interests_file: "xxx.txt"                # AI 兴趣文件（可选，位于 config/custom/ai/）
-      # filter_method: "keyword"                # 筛选策略（可选: keyword | ai，不填用全局 filter.method）
-      collect: true                # 夜间继续采集数据
-      analyze: true                # 夜间可以跑 AI 分析（反正不推送）
-      push: false                  # 深夜不推送，避免打扰
+      end: "06:00"                 # 23:00 → 06:00 next day (cross-midnight period)
+      # frequency_file: "xxx.txt"               # Keyword file (optional, in config/custom/keyword/)
+      # interests_file: "xxx.txt"                # AI interest file (optional, in config/custom/ai/)
+      # filter_method: "keyword"                # Filter strategy (optional: keyword | ai; empty → global filter.method)
+      collect: true                # Keep collecting at night
+      analyze: true                # AI analysis can run at night (no push anyway)
+      push: false                  # No push late at night to avoid disturbance
 
     weekday_morning:
-      name: "工作日早间"
+      name: "Workday Morning"
       start: "08:00"
-      end: "10:00"                 # 跨度 2h，留足触发裕量
-      # frequency_file: "xxx.txt"               # 关键词文件（可选，位于 config/custom/keyword/）
-      # interests_file: "xxx.txt"                # AI 兴趣文件（可选，位于 config/custom/ai/）
-      # filter_method: "keyword"                # 筛选策略（可选: keyword | ai，不填用全局 filter.method）
-      push: true                   # 早上推送一次
-      report_mode: "incremental"   # 只推新增内容
-      # once 继承 default（push: true）→ 窗口内只推一次
+      end: "10:00"                 # 2h span, ample trigger margin
+      # frequency_file: "xxx.txt"               # Keyword file (optional, in config/custom/keyword/)
+      # interests_file: "xxx.txt"                # AI interest file (optional, in config/custom/ai/)
+      # filter_method: "keyword"                # Filter strategy (optional: keyword | ai; empty → global filter.method)
+      push: true                   # One push in the morning
+      report_mode: "incremental"   # Push only new content
+      # once inherits default (push: true) → push once within the window
 
     weekend_morning:
-      name: "周末早间"
+      name: "Weekend Morning"
       start: "10:00"
-      end: "12:00"                 # 跨度 2h
-      # frequency_file: "xxx.txt"               # 关键词文件（可选，位于 config/custom/keyword/）
-      # interests_file: "xxx.txt"                # AI 兴趣文件（可选，位于 config/custom/ai/）
-      # filter_method: "keyword"                # 筛选策略（可选: keyword | ai，不填用全局 filter.method）
+      end: "12:00"                 # 2h span
+      # frequency_file: "xxx.txt"               # Keyword file (optional, in config/custom/keyword/)
+      # interests_file: "xxx.txt"                # AI interest file (optional, in config/custom/ai/)
+      # filter_method: "keyword"                # Filter strategy (optional: keyword | ai; empty → global filter.method)
       push: true
-      report_mode: "daily"         # 周末看全天汇总
-      # once 继承 default（push: true）→ 窗口内只推一次
+      report_mode: "daily"         # Weekend: see the all-day summary
+      # once inherits default (push: true) → push once within the window
 
     evening_summary:
-      name: "晚间汇总"
+      name: "Evening Summary"
       start: "19:00"
       end: "21:00"
-      # frequency_file: "xxx.txt"               # 关键词文件（可选，位于 config/custom/keyword/）
-      # interests_file: "xxx.txt"                # AI 兴趣文件（可选，位于 config/custom/ai/）
-      # filter_method: "keyword"                # 筛选策略（可选: keyword | ai，不填用全局 filter.method）
-      analyze: true                # 晚间做 AI 分析
-      ai_mode: "daily"             # AI 也分析全天内容
-      push: true                   # 晚间推送
-      report_mode: "daily"         # 当日全部新闻汇总
-      # once 继承 default（analyze: true, push: true）→ 只分析/推送一次
+      # frequency_file: "xxx.txt"               # Keyword file (optional, in config/custom/keyword/)
+      # interests_file: "xxx.txt"                # AI interest file (optional, in config/custom/ai/)
+      # filter_method: "keyword"                # Filter strategy (optional: keyword | ai; empty → global filter.method)
+      analyze: true                # AI analysis in the evening
+      ai_mode: "daily"             # AI analyzes the whole day
+      push: true                   # Evening push
+      report_mode: "daily"         # All-news-of-the-day summary
+      # once inherits default (analyze: true, push: true) → analyze/push once
 
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 第 2 步：把积木块拼成日计划
+  # Step 2: Assemble blocks into day plans
   #
-  # 把上面定义的时间段组合成一天的安排。
-  # 你可以定义多个日计划（如 workday 和 weekend），
-  # 然后在第 3 步的 week_map 中分配给不同的星期。
+  # Combine the periods above into a day's schedule.
+  # You can define multiple day plans (e.g. workday and weekend),
+  # then assign them to different weekdays in the week_map in Step 3.
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   day_plans:
-    workday:                       # 工作日计划
+    workday:                       # Workday plan
       periods: ["deep_quiet", "weekday_morning", "evening_summary"]
-    weekend:                       # 周末计划（用 weekend_morning 替换 weekday_morning）
+    weekend:                       # Weekend plan (swap weekday_morning for weekend_morning)
       periods: ["deep_quiet", "weekend_morning", "evening_summary"]
 
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 第 3 步：指定每天用哪个日计划
+  # Step 3: Assign which day plan each day uses
   #
-  # 1=周一  2=周二  3=周三  4=周四  5=周五  6=周六  7=周日
+  # 1=Mon  2=Tue  3=Wed  4=Thu  5=Fri  6=Sat  7=Sun
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   week_map:
-    1: "workday"                   # 周一 → 工作日计划
-    2: "workday"                   # 周二
-    3: "workday"                   # 周三
-    4: "workday"                   # 周四
-    5: "workday"                   # 周五
-    6: "weekend"                   # 周六 → 周末计划
-    7: "weekend"                   # 周日
+    1: "workday"                   # Mon → workday plan
+    2: "workday"                   # Tue
+    3: "workday"                   # Wed
+    4: "workday"                   # Thu
+    5: "workday"                   # Fri
+    6: "weekend"                   # Sat → weekend plan
+    7: "weekend"                   # Sun
 
 
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  # 冲突策略（一般不用改）
+  # Overlap policy (usually no need to change)
   #
-  # 什么是「冲突」？
-  #   如果你的两个时间段有重叠（比如 A 是 08:00-12:00，B 是 10:00-14:00），
-  #   那么 10:00-12:00 这段时间就同时属于 A 和 B，产生了冲突。
-  #   此时程序需要知道：到底听谁的？
+  # What is an "overlap"?
+  #   If two of your periods overlap (e.g. A is 08:00-12:00, B is 10:00-14:00),
+  #   then 10:00-12:00 belongs to both A and B — an overlap.
+  #   The program then needs to know: which one wins?
   #
-  # 两种处理方式：
+  # Two options:
   #
-  #   error_on_overlap（推荐）
-  #     直接报错，提醒你去修改配置。
-  #     适合大多数人 —— 时间段重叠通常是写错了，报错能及时发现。
+  #   error_on_overlap (recommended)
+  #     Returns an error immediately, prompting you to fix the config.
+  #     For most people — overlapping periods are usually mistakes; an error catches them early.
   #
   #   last_wins
-  #     day_plans 的 periods 列表中，写在后面的优先。
-  #     比如 periods: ["A", "B"]，重叠时 B 生效。
-  #     适合场景：你想用一个大范围时间段打底，再用后面的小范围覆盖。
+  #     In the day_plans periods list, the later one wins.
+  #     e.g. periods: ["A", "B"] → on overlap, B takes effect.
+  #     For cases: you want a wide period as the base, then a later small one to override.
   #
   # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   overlap:

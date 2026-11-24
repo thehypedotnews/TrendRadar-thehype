@@ -562,8 +562,12 @@ def send_to_telegram(
 
     # 获取分批内容，预留批次头部空间
     header_reserve = get_max_batch_header_size("telegram")
+    from trendradar.notification import i18n as _i18n
+
+    # English labels are longer than the Chinese ones they replace: keep extra room
+    i18n_reserve = 400 if _i18n.ENGLISH else 0
     batches = split_content_func(
-        report_data, "telegram", update_info, max_bytes=batch_size - header_reserve, mode=mode,
+        report_data, "telegram", update_info, max_bytes=batch_size - header_reserve - i18n_reserve, mode=mode,
         rss_items=rss_items,
         rss_new_items=rss_new_items,
         ai_content=ai_content,
@@ -577,8 +581,17 @@ def send_to_telegram(
 
     # 统一添加批次头部（已预留空间，不会超限）
     batches = add_batch_headers(batches, "telegram", batch_size)
+    if _i18n.ENGLISH:
+        batches = [_i18n.translate_digest(b) for b in batches]
 
     print(f"{log_prefix}消息分为 {len(batches)} 批次发送 [{report_type}]")
+
+    # Fork addition: --dry-run prints the digest instead of sending it
+    from trendradar.notification import alerts as _alerts
+
+    if _alerts.DRY_RUN:
+        _alerts.print_dry_run_batches("Telegram", batches, report_type)
+        return True
 
     # 逐批发送
     for i, batch_content in enumerate(batches, 1):

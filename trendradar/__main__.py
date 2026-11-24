@@ -74,6 +74,13 @@ class NewsAnalyzer:
         self.is_github_actions = os.environ.get("GITHUB_ACTIONS") == "true"
         self.is_docker_container = self._detect_docker_environment()
         self.update_info = None
+        # Fork additions: dry-run mode and the last Bright Data collection result
+        self.dry_run = bool(self.ctx.config.get("DRY_RUN", False))
+        self.brightdata_result = None
+        self.exit_code = 0
+        from trendradar.notification import i18n
+
+        i18n.ENGLISH = i18n.is_english(self.ctx.config)
         self.proxy_url = None
         self._setup_proxy()
         self.data_fetcher = DataFetcher(
@@ -127,7 +134,7 @@ class NewsAnalyzer:
 
     def _should_open_browser(self) -> bool:
         """判断是否应该打开浏览器"""
-        return not self.is_github_actions and not self.is_docker_container
+        return not self.is_github_actions and not self.is_docker_container and not self.dry_run
 
     def _setup_proxy(self) -> None:
         """设置代理配置"""
@@ -999,30 +1006,29 @@ class NewsAnalyzer:
         return True
 
     def _crawl_data(self) -> Tuple[Dict, Dict, List]:
-        """执行数据爬取"""
+        """执行数据爬取 (newsnow hot lists and/or Bright Data sources)"""
         if not self.ctx.config["ENABLE_CRAWLER"]:
             print("[热榜] 热榜抓取已禁用，跳过热榜爬取")
             return {}, {}, []
-        ids = []
-        domain_rules = {}
-        for platform in self.ctx.platforms:
-            if "name" in platform:
-                ids.append((platform["id"], platform["name"]))
-            else:
-                ids.append(platform["id"])
-            expected_domain = platform.get("expected_domain", "")
-            if expected_domain:
-                domain_rules[platform["id"]] = expected_domain
 
-        print(
-            f"配置的监控平台: {[p.get('name', p['id']) for p in self.ctx.platforms]}"
-        )
-        print(f"开始爬取数据，请求间隔 {self.request_interval} 毫秒")
+        results: Dict = {}
+        id_to_name: Dict = {}
+        failed_ids: List = []
         Path("output").mkdir(parents=True, exist_ok=True)
 
-        results, id_to_name, failed_ids = self.data_fetcher.crawl_websites(
-            ids, self.request_interval, domain_rules=domain_rules
-        )
+        # newsnow hot lists (kept from upstream; disabled with platforms.enabled: false)
+        if self.ctx.config.get("NEWSNOW_ENABLED", True):
+            r, n, f = self._crawl_newsnow()
+            results.update(r)
+            id_to_name.update(n)
+            failed_ids.extend(f)
+
+        # Bright Data sources (fork addition)
+        if self.ctx.config.get("BRIGHTDATA", {}).get("enabled"):
+            r, n, f = self._crawl_brightdata()
+            results.update(r)
+            id_to_name.update(n)
+            failed_ids.extend(f)
 
         # 转换为 NewsData 格式并保存到存储后端
         crawl_time = self.ctx.format_time()
@@ -1041,6 +1047,48 @@ class NewsAnalyzer:
             print(f"TXT 快照已保存: {txt_file}")
 
         return results, id_to_name, failed_ids
+
+    def _crawl_newsnow(self) -> Tuple[Dict, Dict, List]:
+        """newsnow hot lists (original TrendRadar data source)."""
+        ids = []
+        domain_rules = {}
+        newsnow_platforms = [p for p in self.ctx.platforms if p.get("provider") != "brightdata"]
+        if not newsnow_platforms:
+            return {}, {}, []
+        for platform in newsnow_platforms:
+            if "name" in platform:
+                ids.append((platform["id"], platform["name"]))
+            else:
+                ids.append(platform["id"])
+            expected_domain = platform.get("expected_domain", "")
+            if expected_domain:
+                domain_rules[platform["id"]] = expected_domain
+
+        print(
+            f"配置的监控平台: {[p.get('name', p['id']) for p in newsnow_platforms]}"
+        )
+        print(f"开始爬取数据，请求间隔 {self.request_interval} 毫秒")
+        return self.data_fetcher.crawl_websites(
+            ids, self.request_interval, domain_rules=domain_rules
+        )
+
+    def _crawl_brightdata(self) -> Tuple[Dict, Dict, List]:
+        """Collect through Bright Data (SERP, Reddit/X/YouTube, Web Unlocker)."""
+        from trendradar.crawler.brightdata.collector import BrightDataCollector
+        from trendradar.crawler.brightdata.state import StateSync
+
+        sync = StateSync(self.storage_manager, dry_run=self.dry_run)
+        state = sync.open()
+        try:
+            collector = BrightDataCollector(
+                self.ctx.config["BRIGHTDATA"], state,
+                timezone_name=self.ctx.config.get("TIMEZONE", DEFAULT_TIMEZONE),
+            )
+            result = collector.collect()
+        finally:
+            sync.save()
+        self.brightdata_result = result
+        return result.results, result.id_to_name, result.failed_ids
 
     def _crawl_rss_data(self) -> Tuple[Optional[List[Dict]], Optional[List[Dict]], Optional[List[Dict]], set]:
         """
@@ -1974,6 +2022,15 @@ class NewsAnalyzer:
             else:
                 results, id_to_name, failed_ids = {}, {}, []
 
+            # Fork addition: a failed Bright Data collection must never look like "no news"
+            bd = self.brightdata_result
+            if bd is not None and bd.all_failed:
+                from trendradar.notification.alerts import brightdata_failure_lines, send_alert
+
+                print("[Bright Data] ❌ collection failed: " + " | ".join(bd.error_summary()))
+                send_alert(self.ctx.config, "TrendRadar: Bright Data collection failed", brightdata_failure_lines(bd))
+                self.exit_code = 1
+
             # 2. 抓取 RSS 数据（如启用且调度允许采集）
             if schedule.collect:
                 rss_items, rss_new_items, raw_rss_items, rss_new_urls = self._crawl_rss_data()
@@ -1992,13 +2049,96 @@ class NewsAnalyzer:
                 schedule=schedule,
             )
 
+            # Fork addition: some (not all) Bright Data sources failed -> short warning after the digest
+            if bd is not None and not bd.all_failed and bd.errors and self.ctx.config["BRIGHTDATA"].get(
+                "alert_on_partial_failure", True
+            ):
+                from trendradar.notification.alerts import send_alert
+
+                send_alert(
+                    self.ctx.config,
+                    "TrendRadar: some Bright Data sources failed",
+                    ["The digest was built from the sources that worked."]
+                    + [f"• {line}" for line in bd.error_summary()[:6]],
+                )
+
         except Exception as e:
             print(f"分析流程执行出错: {e}")
+            self.exit_code = 1
+            from trendradar.notification.alerts import send_alert
+
+            send_alert(self.ctx.config, "TrendRadar run crashed", [f"{e.__class__.__name__}: {e}"[:500]])
             if self.ctx.config.get("DEBUG", False):
                 raise
         finally:
             # 清理资源（包括过期数据清理和数据库连接关闭）
             self.ctx.cleanup()
+
+
+
+# ---------------------------------------------------------------------------
+# Fork additions: .env loading for local runs, and --dry-run
+# ---------------------------------------------------------------------------
+
+def _load_dotenv(path: str = ".env") -> None:
+    """Load KEY=VALUE lines from .env into the environment (local runs only).
+
+    Existing environment variables win. Values are never printed.
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true" or not os.path.isfile(path):
+        return
+    loaded = 0
+    with open(path, encoding="utf-8-sig") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            if line.startswith("export "):
+                line = line[7:]
+            key, value = line.split("=", 1)
+            key, value = key.strip(), value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if key and value and key not in os.environ:
+                os.environ[key] = value
+                loaded += 1
+    print(f"Loaded {loaded} setting(s) from {path}")
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _apply_dry_run(config: Dict) -> None:
+    """Collect and filter normally, but print the digest instead of sending it.
+
+    - all notification channels are replaced by a printing Telegram stand-in
+    - news storage goes to a throw-away local folder (nothing is uploaded to S3/R2)
+    - Bright Data state is read but not saved, so the next real run is unaffected
+    Bright Data requests are still made (and billed).
+    """
+    import tempfile
+    from trendradar.notification import alerts
+
+    alerts.DRY_RUN = True
+    config["DRY_RUN"] = True
+    for key in (
+        "FEISHU_WEBHOOK_URL", "DINGTALK_WEBHOOK_URL", "WEWORK_WEBHOOK_URL", "EMAIL_FROM", "EMAIL_PASSWORD",
+        "EMAIL_TO", "NTFY_TOPIC", "BARK_URL", "SLACK_WEBHOOK_URL", "GENERIC_WEBHOOK_URL",
+    ):
+        if key in config:
+            config[key] = ""
+    config["TELEGRAM_BOT_TOKEN"] = config.get("TELEGRAM_BOT_TOKEN") or "dry-run"
+    config["TELEGRAM_CHAT_ID"] = config.get("TELEGRAM_CHAT_ID") or "dry-run"
+    config["ENABLE_NOTIFICATION"] = True
+    storage = config.setdefault("STORAGE", {})
+    storage["BACKEND"] = "local"
+    storage.setdefault("LOCAL", {})["DATA_DIR"] = tempfile.mkdtemp(prefix="trendradar_dryrun_")
+    storage.setdefault("PULL", {})["ENABLED"] = False
+    print("=" * 60)
+    print("DRY RUN: collecting and filtering, the digest will be printed, nothing is sent or uploaded.")
+    print("Bright Data requests are still made and billed (they are not added to the daily counter).")
+    print("=" * 60)
 
 
 def main():
@@ -2023,10 +2163,14 @@ def main():
     parser.add_argument("--show-schedule", action="store_true", help="显示当前调度状态")
     parser.add_argument("--doctor", action="store_true", help="运行环境与配置体检")
     parser.add_argument("--test-notification", action="store_true", help="发送测试通知到已配置渠道")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="collect and filter, print the digest instead of sending it (also: DRY_RUN=true)")
 
     args = parser.parse_args()
+    _load_dotenv()
 
     debug_mode = False
+    exit_code = 0
     try:
         if args.doctor:
             ok = run_doctor()
@@ -2035,6 +2179,8 @@ def main():
             return
 
         config = load_config()
+        if args.dry_run or _env_truthy("DRY_RUN"):
+            _apply_dry_run(config)
 
         if args.show_schedule:
             handle_status_commands(config)
@@ -2064,16 +2210,23 @@ def main():
 
         debug_mode = analyzer.ctx.config.get("DEBUG", False)
         analyzer.run()
+        exit_code = analyzer.exit_code
     except FileNotFoundError as e:
+        exit_code = 1
         print(f"❌ 配置文件错误: {e}")
         print("\n请确保以下文件存在:")
         print("  • config/config.yaml")
         print("  • config/frequency_words.txt")
         print("\n参考项目文档进行正确配置")
+    except SystemExit:
+        raise
     except Exception as e:
         print(f"❌ 程序运行错误: {e}")
+        exit_code = 1
         if debug_mode:
             raise
+    if exit_code:
+        raise SystemExit(exit_code)
 
 
 if __name__ == "__main__":
