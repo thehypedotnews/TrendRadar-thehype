@@ -134,6 +134,34 @@ class CollectorTests(unittest.TestCase):
         self.assertTrue(res.all_failed)
 
 
+class CarryOverTests(unittest.TestCase):
+    def test_unfinished_job_is_collected_next_run(self):
+        tmp = tempfile.mkdtemp()
+        state = BrightDataState(os.path.join(tmp, "s.db"))
+        cfg = {"enabled": True, "reddit": {"enabled": True, "keywords": ["ai"]}, "scraper_max_wait": 0}
+        try:
+            # run 1: job never gets ready -> carried over, no alert-worthy failure
+            s1 = FakeSession([("POST", "/datasets/v3/trigger", FakeResponse(200, {"snapshot_id": "s_slow"})),
+                              ("GET", "/progress/s_slow", FakeResponse(200, {"status": "running"}))])
+            c1 = BrightDataClient("k", RequestBudget(), session=s1, sleep=lambda s: None)
+            r1 = BrightDataCollector(cfg, state, "UTC", api_key="k", client=c1).collect(NOW)
+            self.assertEqual(r1.carried_over, 1)
+            self.assertFalse(r1.all_failed)
+            self.assertEqual([j[0] for j in state.pending_jobs(max_age_hours=10**6)], ["s_slow"])
+            # run 2: old job is ready now; the new job is still running
+            s2 = FakeSession([("POST", "/datasets/v3/trigger", FakeResponse(200, {"snapshot_id": "s_new"})),
+                              ("GET", "/progress/s_slow", FakeResponse(200, {"status": "ready"})),
+                              ("GET", "/snapshot/s_slow", FakeResponse(200, REDDIT)),
+                              ("GET", "/progress/s_new", FakeResponse(200, {"status": "running"}))])
+            c2 = BrightDataClient("k", RequestBudget(), session=s2, sleep=lambda s: None)
+            r2 = BrightDataCollector(cfg, state, "UTC", api_key="k", client=c2).collect(NOW + timedelta(hours=6))
+            self.assertEqual(len(r2.results["bd-reddit"]), 2)
+            self.assertEqual([j[0] for j in state.pending_jobs(max_age_hours=10**6)], ["s_new"])
+        finally:
+            state.close()
+            ranking.clear_signals()
+
+
 class RedditFallbackTests(unittest.TestCase):
     def test_rejected_date_retries_next_spelling(self):
         from trendradar.crawler.brightdata.sources.social import trigger_platform

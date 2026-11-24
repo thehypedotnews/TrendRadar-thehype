@@ -25,7 +25,7 @@ import pytz
 from trendradar.core.ranking import RankingConfig, percentile_ranks, score, set_signals
 
 from .budget import RequestBudget
-from .client import BrightDataClient
+from .client import BrightDataClient, PendingJob
 from .errors import BrightDataError
 from .models import PLATFORMS, SOURCE_PRIORITY, CollectedItem
 from .sources.serp import collect_serp
@@ -50,13 +50,15 @@ class CollectionResult:
     skipped_seen: int = 0
     skipped_old: int = 0
     balance: Optional[Dict] = None
+    carried_over: int = 0
 
     @property
     def all_failed(self) -> bool:
         """True when Bright Data produced nothing because of errors (not because there was no news)."""
         if self.fatal is not None:
             return True
-        return bool(self.enabled_sources) and self.collected_before_filters == 0 and bool(self.errors)
+        return (bool(self.enabled_sources) and self.collected_before_filters == 0 and bool(self.errors)
+                and self.carried_over == 0)
 
     def error_summary(self) -> List[str]:
         lines = []
@@ -182,17 +184,37 @@ class BrightDataCollector:
                 res.fatal = e
                 print(f"[Bright Data] FATAL: {e.short()}")
 
-        # 3. scraper results (also after a budget stop: those jobs are already paid for)
-        if jobs and res.fatal is None:
-            outcome = client.wait_for_jobs([j for j, _ in jobs], max_wait=int(self.cfg.get("scraper_max_wait", 420)))
-            for job, desc in jobs:
+        # 3. scraper results (also after a budget stop: those jobs are already paid for).
+        #    Jobs left unfinished by earlier runs are collected here too.
+        carried = []
+        if res.fatal is None:
+            for sid, source, desc, started in self.state.pending_jobs():
+                if source in res.enabled_sources:
+                    carried.append((PendingJob(source, "", sid, started), f"{desc} (from an earlier run)"))
+            if carried:
+                print(f"[Bright Data] picking up {len(carried)} scraper job(s) left running by an earlier run")
+        all_jobs = carried + jobs
+        if all_jobs and res.fatal is None:
+            outcome = client.wait_for_jobs([j for j, _ in all_jobs], max_wait=int(self.cfg.get("scraper_max_wait", 420)))
+            for job, desc in all_jobs:
                 got = outcome.get(job.snapshot_id)
+                is_carried = (job, desc) in carried
                 if isinstance(got, BrightDataError):
+                    if got.kind == "timeout" and self.cfg.get("carry_over_unfinished_jobs", True):
+                        # still running at Bright Data and already paid for: collect it next run
+                        self.state.add_pending_job(job.snapshot_id, job.source, desc.replace(" (from an earlier run)", ""), job.started_at)
+                        print(f"[Bright Data] {job.source} {desc}: still running at Bright Data, results will be "
+                              f"collected by the next run")
+                        res.carried_over += 1
+                        continue
+                    if is_carried:
+                        self.state.remove_pending_job(job.snapshot_id)
                     print(f"[Bright Data] {job.source} {desc} failed: {got.short()}")
                     errors.append(got)
                     if got.is_fatal:
                         res.fatal = got
                 else:
+                    self.state.remove_pending_job(job.snapshot_id)
                     items = parse_records(job.source, got or [])
                     print(f"[Bright Data] {job.source} {desc}: {len(items)} items")
                     raw.extend(items)

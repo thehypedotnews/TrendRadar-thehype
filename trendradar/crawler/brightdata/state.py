@@ -50,6 +50,12 @@ CREATE TABLE IF NOT EXISTS title_sources (
     last_seen REAL NOT NULL,
     PRIMARY KEY (title_key, source)
 );
+CREATE TABLE IF NOT EXISTS pending_jobs (
+    snapshot_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    started_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS usage (
     day TEXT PRIMARY KEY,
     requests INTEGER NOT NULL DEFAULT 0,
@@ -87,6 +93,29 @@ class BrightDataState:
             "records=records+excluded.records, runs=runs+1",
             (day, requests, records),
         )
+        self.conn.commit()
+
+    # ------------------------------------------------------ pending jobs
+    # Scraper jobs that did not finish within one run keep running (and are billed)
+    # at Bright Data; their results are picked up by the next run.
+
+    def pending_jobs(self, max_age_hours: float = 24) -> List[Tuple[str, str, str, float]]:
+        cutoff = time.time() - max_age_hours * 3600
+        self.conn.execute("DELETE FROM pending_jobs WHERE started_at < ?", (cutoff,))
+        self.conn.commit()
+        return list(self.conn.execute(
+            "SELECT snapshot_id, source, description, started_at FROM pending_jobs ORDER BY started_at"
+        ))
+
+    def add_pending_job(self, snapshot_id: str, source: str, description: str, started_at: float) -> None:
+        self.conn.execute(
+            "INSERT OR REPLACE INTO pending_jobs(snapshot_id, source, description, started_at) VALUES(?,?,?,?)",
+            (snapshot_id, source, description, started_at),
+        )
+        self.conn.commit()
+
+    def remove_pending_job(self, snapshot_id: str) -> None:
+        self.conn.execute("DELETE FROM pending_jobs WHERE snapshot_id=?", (snapshot_id,))
         self.conn.commit()
 
     # -------------------------------------------------------------- seen

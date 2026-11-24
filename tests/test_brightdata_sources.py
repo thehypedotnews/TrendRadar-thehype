@@ -89,6 +89,28 @@ class SerpTests(unittest.TestCase):
 
         self.assertEqual(resolve_redirect("https://www.google.com/goto?url=CAES", session=Sess()), "https://real.example/article")
 
+        class Page:
+            status_code = 200
+            headers = {}
+            text = '<html><head><meta http-equiv="refresh" content="0;url=https://real.example/b"></head></html>'
+
+        class PageSess:
+            def get(self, url, **kw):
+                return Page()
+
+        self.assertEqual(resolve_redirect("https://www.google.com/goto?url=CAES", session=PageSess()), "https://real.example/b")
+
+        class Consent:
+            status_code = 200
+            headers = {}
+            text = '<a href="https://www.gstatic.com/x.js">x</a><a href="https://policies.google.com/">p</a>'
+
+        class ConsentSess:
+            def get(self, url, **kw):
+                return Consent()
+
+        self.assertIsNone(resolve_redirect("https://www.google.com/goto?url=CAES", session=ConsentSess()))
+
     def test_non_json(self):
         with self.assertRaises(Exception):
             parse_serp("<html>", True, "q")

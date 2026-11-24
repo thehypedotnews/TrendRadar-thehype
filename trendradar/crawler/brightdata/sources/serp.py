@@ -8,6 +8,9 @@ tbm=nws, recency is Google's tbs=qdr:<h|d|w>.
 """
 
 import json
+import re
+import time
+from collections import Counter
 from datetime import datetime
 from typing import Dict, List, Optional
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -88,15 +91,17 @@ def collect_serp(client: BrightDataClient, cfg: Dict, zone: str, errors: List[Br
             continue
         for news in tabs:
             source = "google_news" if news else "google"
-            tries = 1 + max(0, int(cfg.get("retries_on_bad_response", 1)))
+            tries = 1 + max(0, int(cfg.get("retries_on_bad_response", 2)))
             for attempt in range(1, tries + 1):
                 try:
                     body = client.zone_request(zone, build_google_url(query, news, cfg), source)
                     got = parse_serp(body, news, query)
                     if cfg.get("resolve_redirects", True):
+                        RESOLVE_STATS.clear()
                         resolved = sum(_resolve(it) for it in got)
-                        if resolved:
-                            print(f"[Bright Data] {source} '{query}': resolved {resolved} Google redirect link(s)")
+                        if RESOLVE_STATS:
+                            print(f"[Bright Data] {source} '{query}': Google redirect links: "
+                                  + ", ".join(f"{k} ×{v}" for k, v in RESOLVE_STATS.most_common()))
                     print(f"[Bright Data] {source} '{query}': {len(got)} results")
                     items.extend(got)
                     break
@@ -105,7 +110,8 @@ def collect_serp(client: BrightDataClient, cfg: Dict, zone: str, errors: List[Br
                     if e.is_fatal or e.kind == "budget":
                         raise
                     if attempt < tries and "did not return JSON" in e.message:
-                        print(f"[Bright Data] {source} '{query}': unexpected response, retrying once")
+                        print(f"[Bright Data] {source} '{query}': unexpected response, retrying ({attempt}/{tries - 1})")
+                        time.sleep(3 * attempt)
                         continue
                     print(f"[Bright Data] {source} '{query}' failed: {e.short()}")
                     errors.append(e)
@@ -146,12 +152,33 @@ def resolve_redirect(url: str, timeout: float = 6.0, session=None) -> Optional[s
             url, allow_redirects=False, timeout=timeout,
             headers={"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"},
         )
-    except requests.RequestException:
+    except requests.RequestException as e:
+        RESOLVE_STATS[f"error {e.__class__.__name__}"] += 1
         return None
     loc = resp.headers.get("Location", "")
     if resp.status_code in (301, 302, 303, 307, 308) and loc.startswith("http") and not is_google_redirect(loc):
+        RESOLVE_STATS["ok (redirect)"] += 1
         return loc
+    # some redirect pages answer 200 with a meta refresh / JS location / single outbound link
+    body = getattr(resp, "text", "") or ""
+    patterns = (_META_REFRESH, _JS_LOCATION) + ((_OUT_LINK,) if len(body) < 20000 else ())
+    for rx in patterns:
+        m = rx.search(body)
+        if m:
+            cand = m.group(1).replace("&amp;", "&")
+            host = (urlparse(cand).hostname or "").lower()
+            if cand.startswith("http") and not any(h in host for h in _NOT_ARTICLE_HOSTS):
+                RESOLVE_STATS["ok (page)"] += 1
+                return cand
+    RESOLVE_STATS[f"failed: HTTP {resp.status_code}"] += 1
     return None
+
+
+RESOLVE_STATS: Counter = Counter()
+_NOT_ARTICLE_HOSTS = ("google.", "gstatic.", "googleapis.", "googleusercontent.", "youtube.", "schema.org", "w3.org")
+_META_REFRESH = re.compile(r'http-equiv=["\']?refresh["\']?[^>]*?url=([^"\'>\s]+)', re.I)
+_JS_LOCATION = re.compile(r'(?:location(?:\.href)?\s*=|location\.replace\()\s*["\']([^"\']+)["\']', re.I)
+_OUT_LINK = re.compile(r'<a[^>]+href=["\'](https?://[^"\']+)["\']', re.I)
 
 
 def _resolve(item: CollectedItem) -> int:
