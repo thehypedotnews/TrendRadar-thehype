@@ -78,10 +78,14 @@ def main():
         required.append(("TELEGRAM_BOT_TOKEN", "digests are sent to Telegram"))
         required.append(("TELEGRAM_CHAT_ID", "digests are sent to Telegram"))
 
-    if ON_ACTIONS:
-        for name in ("S3_BUCKET_NAME", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_ENDPOINT_URL"):
-            required.append((name, "GitHub Actions forgets files after each run; history, dedup and the daily "
-                                   "limit need R2/S3 storage"))
+    s3_names = ("S3_BUCKET_NAME", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_ENDPOINT_URL")
+    s3_set = [n for n in s3_names if is_set(n)]
+    if s3_set and len(s3_set) < len(s3_names):
+        # half-configured R2 is almost certainly a mistake
+        for name in s3_names:
+            required.append((name, "some S3_* secrets are set, so all four are needed for R2/S3 storage"))
+    elif ON_ACTIONS and not s3_set:
+        print("Note: no R2/S3 secrets — history between runs is kept in the GitHub Actions cache.")
 
     ai_users = []
     ai_analysis = env_bool("AI_ANALYSIS_ENABLED")

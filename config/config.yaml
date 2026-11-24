@@ -462,7 +462,7 @@ storage:
   # Local storage configuration
   local:
     data_dir: "output"                # Data directory
-    retention_days: 0                 # Retention days (0=keep forever)
+    retention_days: 14                 # Retention days (0=keep forever)
 
   # Remote storage configuration (S3-compatible)
   # Supports: Cloudflare R2, Alibaba Cloud OSS, Tencent Cloud COS, AWS S3, MinIO, etc.

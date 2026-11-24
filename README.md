@@ -15,7 +15,7 @@ A news radar that runs on **GitHub Actions** for free, collects fresh items thro
 
   newsnow and RSS are still in the code, switched off in `config/config.yaml`.
 - **New ranking.** Items are ranked by freshness + engagement (likes, comments, views, search position) + recurrence (seen in several runs or on several sources). The original ranked by position on Chinese hot lists. See [How ranking works](#how-ranking-works).
-- **Cross-day memory.** Items already collected on an earlier day are not sent again. This state is kept in your R2 bucket.
+- **Cross-day memory.** Items already collected on an earlier day are not sent again. This state is kept in the GitHub Actions cache, or in your own Cloudflare R2 bucket if you set one up.
 - **Cost limits.** You set a maximum number of Bright Data requests and records per run and per day, and every run logs what it used.
 - **Failures are never silent:**
   - If Bright Data fails (wrong key, no balance, limit reached), you get a short Telegram alert and the run turns red.
@@ -40,7 +40,7 @@ A news radar that runs on **GitHub Actions** for free, collects fresh items thro
 
 ## Setup
 
-You need about 30–45 minutes and four free accounts: **GitHub**, **Telegram**, **Bright Data** and **Cloudflare** (for R2 storage). Bright Data needs a balance or its free tier.
+You need about 30 minutes and three accounts: **GitHub**, **Telegram** and **Bright Data**. Bright Data needs a balance or its free tier. **Cloudflare R2** is optional (Step 4).
 
 ### Step 1 — Create your own copy of this repository
 
@@ -88,9 +88,14 @@ You need about 30–45 minutes and four free accounts: **GitHub**, **Telegram**,
 >
 > 📷 **Screenshot placeholder:** creating a SERP API zone, with the zone name highlighted.
 
-### Step 4 — Cloudflare R2 bucket and keys
+### Step 4 — (Optional) Cloudflare R2 bucket and keys
 
-GitHub Actions forgets all files after every run. R2 stores the history, which makes three things work: no repeated items, the daily request limit, and recurrence in the ranking. R2's free tier is far more than this project needs.
+GitHub Actions forgets all files after every run. The history (no repeated items, the daily request limit, recurrence in the ranking) has to live somewhere:
+
+- **Without R2 (default):** it is kept in the GitHub Actions cache. Nothing to set up. GitHub may drop a cache that goes unused for 7 days, for example during a pause; after that the first digest can repeat a few items once.
+- **With R2:** it is kept in your own bucket, permanently. R2's free tier is far more than this project needs, but Cloudflare may ask for a card or PayPal to activate R2.
+
+To use R2:
 
 1. Log in to **[dash.cloudflare.com](https://dash.cloudflare.com)** → **R2 Object Storage** → **Create bucket**. Give it a name, e.g. `trendradar`. This is your `S3_BUCKET_NAME`.
 2. Find your **Account ID** on the R2 overview page. Your endpoint is `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`, which goes into `S3_ENDPOINT_URL`.
@@ -113,11 +118,11 @@ In your repository: **Settings → Secrets and variables → Actions → New rep
 | `BRIGHTDATA_UNLOCKER_ZONE` | only if `brightdata.web` is on | Name of your Web Unlocker zone |
 | `TELEGRAM_BOT_TOKEN` | **yes** | Bot token from BotFather |
 | `TELEGRAM_CHAT_ID` | **yes** | Your chat / channel ID |
-| `S3_BUCKET_NAME` | **yes** | R2 bucket name |
-| `S3_ACCESS_KEY_ID` | **yes** | R2 Access Key ID |
-| `S3_SECRET_ACCESS_KEY` | **yes** | R2 Secret Access Key |
-| `S3_ENDPOINT_URL` | **yes** | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
-| `S3_REGION` | optional | `auto` |
+| `S3_BUCKET_NAME` | only with R2 (all four or none) | R2 bucket name |
+| `S3_ACCESS_KEY_ID` | only with R2 | R2 Access Key ID |
+| `S3_SECRET_ACCESS_KEY` | only with R2 | R2 Secret Access Key |
+| `S3_ENDPOINT_URL` | only with R2 | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `S3_REGION` | only with R2 | `auto` |
 | `AI_API_KEY` | only if you turn on AI features | Key for your LLM provider |
 | `AI_MODEL` | optional | e.g. `openai/gpt-4o-mini` ([LiteLLM model names](https://docs.litellm.ai/docs/providers)) |
 
@@ -128,6 +133,7 @@ gh secret set BRIGHTDATA_API_KEY
 gh secret set BRIGHTDATA_SERP_ZONE
 gh secret set TELEGRAM_BOT_TOKEN
 gh secret set TELEGRAM_CHAT_ID
+# only if you use R2:
 gh secret set S3_BUCKET_NAME
 gh secret set S3_ACCESS_KEY_ID
 gh secret set S3_SECRET_ACCESS_KEY
