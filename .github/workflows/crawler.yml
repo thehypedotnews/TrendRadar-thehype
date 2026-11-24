@@ -3,45 +3,35 @@ name: Get Hot News
 on:
   schedule:
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # ⚠️ 试用版说明 / Trial Mode
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # WHEN IT RUNS — times are always UTC (GitHub Actions has no other timezone)
     #
-    # 🔄 运行机制 / How it works:
-    #    - 每个周期为 7 天，届时自动停止
-    #    - 运行 "Check In" 会重置周期（重新开始 7 天倒计时，而非累加）
-    #    - Each cycle is 7 days, then auto-stops
-    #    - "Check In" resets the cycle (restarts 7-day countdown, not cumulative)
+    #   "17 6,12,18 * * *"  → 06:17, 12:17, 18:17 UTC every day (default)
+    #                          = 08:17 / 14:17 / 20:17 in Kyiv (winter), 01:17 / 07:17 / 13:17 in New York (winter)
+    #   "17 7 * * *"        → once a day at 07:17 UTC
+    #   "17 */4 * * *"      → every 4 hours
     #
-    # 💡 设计初衷 / Why this design:
-    #    如果 7 天都忘了签到，或许这些资讯对你来说并非刚需
-    #    适时的暂停，能帮你从信息流中抽离，给大脑留出喘息的空间
-    #    If you forget for 7 days, maybe you don't really need it
-    #    A timely pause helps you detach from the stream and gives your mind space
+    # Every run spends Bright Data requests: runs per day × requests per run.
+    # See README → "Cost" before making this more frequent.
+    # A minute like :17 instead of :00 avoids GitHub's busiest moment (runs on :00 are often delayed).
     #
-    # 🙏 珍惜资源 / Respect shared resources:
-    #    GitHub Actions 是平台提供的公共资源，每次运行都会消耗算力
-    #    签到机制确保资源分配给真正需要的用户，感谢你的理解与配合
-    #    GitHub Actions is a shared public resource provided by the platform
-    #    Check-in ensures resources go to those who truly need it — thank you
-    #
-    # 🚀 长期使用请部署 Docker 版本 / For long-term use, deploy Docker version
-    #
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    #
-    # 📝 修改运行时间：只改第一个数字（0-59），表示每小时第几分钟运行
-    # 📝 Change time: Only modify the first number (0-59) = minute of each hour
-    #
-    # 示例 / Examples:
-    #   "15 * * * *"     → 每小时第15分钟 / minute 15 every hour
-    #   "30 0-14 * * *"  → 北京时间 8:00-22:00 每小时第30分钟 / Beijing 8am-10pm
-    #
-    - cron: "33 * * * *"
+    # 7-DAY CHECK-IN (kept from upstream TrendRadar):
+    #   Scheduled runs stop by themselves 7 days after the oldest run in the history.
+    #   Run the "Check In" workflow at least once every 7 days to keep them going.
+    #   Note: Check In deletes all past run logs of this repository; that is how it resets the timer.
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    - cron: "17 6,12,18 * * *"
 
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: collect and filter, print the digest in the log instead of sending it"
+        type: boolean
+        default: false
 
 concurrency:
   group: crawler-${{ github.ref_name }}
-  cancel-in-progress: true
+  # queue instead of cancel: a cancelled run has already paid for its Bright Data requests
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -50,7 +40,7 @@ permissions:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - name: Checkout repository
@@ -58,6 +48,26 @@ jobs:
         with:
           fetch-depth: 1
           clean: true
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # Fails fast and lists every missing secret by name (values are never printed)
+      - name: Preflight (required secrets)
+        env:
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_SERP_ZONE: ${{ secrets.BRIGHTDATA_SERP_ZONE }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          S3_BUCKET_NAME: ${{ secrets.S3_BUCKET_NAME }}
+          S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT_URL: ${{ secrets.S3_ENDPOINT_URL }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_ANALYSIS_ENABLED: ${{ secrets.AI_ANALYSIS_ENABLED }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || '' }}
+        run: uv run --no-project --with pyyaml==6.0.3 python scripts/preflight.py
 
       - name: Check Expiration
         env:
@@ -117,10 +127,6 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install uv
-        if: success()
-        uses: astral-sh/setup-uv@v7
-
       - name: Install dependencies
         if: success()
         run: uv sync --frozen --no-dev
@@ -133,9 +139,30 @@ jobs:
             exit 1
           fi
 
+      # ----------------------------------------------------------------------------
+      # History between runs (fork addition)
+      # Without R2/S3 secrets, the output/ folder (news databases + Bright Data state)
+      # is kept in the GitHub Actions cache. With R2/S3 secrets set, R2 is used instead
+      # and this cache simply stays small.
+      # ----------------------------------------------------------------------------
+      - name: Restore history (GitHub cache)
+        if: success()
+        uses: actions/cache/restore@v4
+        with:
+          path: output
+          key: trendradar-history-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            trendradar-history-${{ github.ref_name }}-
+            trendradar-history-
+
       - name: Run crawler
         if: success()
         env:
+          # Bright Data (fork addition)
+          BRIGHTDATA_API_KEY: ${{ secrets.BRIGHTDATA_API_KEY }}
+          BRIGHTDATA_SERP_ZONE: ${{ secrets.BRIGHTDATA_SERP_ZONE }}
+          BRIGHTDATA_UNLOCKER_ZONE: ${{ secrets.BRIGHTDATA_UNLOCKER_ZONE }}
+          DRY_RUN: ${{ inputs.dry_run && 'true' || '' }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -168,6 +195,14 @@ jobs:
           S3_REGION: ${{ secrets.S3_REGION }}
           GITHUB_ACTIONS: true
         run: uv run python -m trendradar
+
+      - name: Save history (GitHub cache)
+        # also after a failed run, so the daily request counter is not lost; never after a dry run
+        if: always() && !inputs.dry_run && hashFiles('output/**') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: output
+          key: trendradar-history-${{ github.ref_name }}-${{ github.run_id }}
 
       # --------------------------------------------------------------------------------
       # ☁️ CLOUDFLARE PAGES DEPLOY / 部署到 Cloudflare Pages（可选）

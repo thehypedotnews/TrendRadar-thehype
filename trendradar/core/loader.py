@@ -44,6 +44,8 @@ def _load_app_config(config_data: Dict) -> Dict:
     app_config = config_data.get("app", {})
     advanced = config_data.get("advanced", {})
     return {
+        # Fork addition: language of digest labels ("en" or "zh")
+        "DIGEST_LANGUAGE": _get_env_str("DIGEST_LANGUAGE") or str(app_config.get("digest_language", "zh")),
         "VERSION_CHECK_URL": advanced.get("version_check_url", ""),
         "CONFIGS_VERSION_CHECK_URL": advanced.get("configs_version_check_url", ""),
         "SHOW_VERSION_UPDATE": app_config.get("show_version_update", True),
@@ -167,10 +169,29 @@ def _load_weight_config(config_data: Dict) -> Dict:
     advanced = config_data.get("advanced", {})
     weight = advanced.get("weight", {})
     return {
+        # "brightdata" (fork default): Bright Data items use freshness + engagement + recurrence;
+        # "legacy": original hot-list position formula for everything.
+        "MODE": str(weight.get("mode", "brightdata")).lower(),
         "RANK_WEIGHT": weight.get("rank", 0.6),
         "FREQUENCY_WEIGHT": weight.get("frequency", 0.3),
         "HOTNESS_WEIGHT": weight.get("hotness", 0.1),
     }
+
+
+def _load_brightdata_config(config_data: Dict) -> Dict:
+    """Bright Data source layer (fork addition). Credentials come only from env vars."""
+    bd = dict(config_data.get("brightdata", {}) or {})
+    env_enabled = _get_env_bool("BRIGHTDATA_ENABLED")
+    if env_enabled is not None:
+        bd["enabled"] = env_enabled
+    bd.setdefault("enabled", False)
+    for section, env_name in (("serp", "BRIGHTDATA_SERP_ZONE"), ("web", "BRIGHTDATA_UNLOCKER_ZONE")):
+        sec = dict(bd.get(section, {}) or {})
+        env_zone = _get_env_str(env_name)
+        if env_zone:
+            sec["zone"] = env_zone
+        bd[section] = sec
+    return bd
 
 
 def _load_rss_config(config_data: Dict) -> Dict:
@@ -693,7 +714,20 @@ def load_config(config_path: Optional[str] = None) -> Dict[str, Any]:
 
     # 平台配置
     platforms_config = config_data.get("platforms", {})
-    config["PLATFORMS"] = [p for p in platforms_config.get("sources", []) if p.get("enabled", True)]
+    newsnow_enabled = bool(config["ENABLE_CRAWLER"])
+    config["NEWSNOW_ENABLED"] = newsnow_enabled
+    config["PLATFORMS"] = (
+        [p for p in platforms_config.get("sources", []) if p.get("enabled", True)]
+        if newsnow_enabled else []
+    )
+
+    # Bright Data (fork addition): its sources join the hot-list pipeline as extra platforms
+    config["BRIGHTDATA"] = _load_brightdata_config(config_data)
+    if config["BRIGHTDATA"].get("enabled"):
+        from trendradar.crawler.brightdata.collector import platform_entries
+
+        config["PLATFORMS"] = config["PLATFORMS"] + platform_entries(config["BRIGHTDATA"])
+        config["ENABLE_CRAWLER"] = True
 
     # RSS 配置
     config["RSS"] = _load_rss_config(config_data)

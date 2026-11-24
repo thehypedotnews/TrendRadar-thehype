@@ -1,3 +1,5 @@
+> **TrendRadar-thehype fork:** this is the original English README of TrendRadar by sansan0, kept for reference. For this fork (Bright Data sources, setup on GitHub Actions) read **[README.md](README.md)**.
+
 <div align="center" id="trendradar">
 
 <a href="https://github.com/sansan0/TrendRadar" title="TrendRadar">

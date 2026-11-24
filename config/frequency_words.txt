@@ -1,258 +1,177 @@
 # ═══════════════════════════════════════════════════════════════
-#                    TrendRadar 频率词配置文件
+#                TrendRadar Frequency-words Configuration
 #                         Version: 1.1.0
 # ═══════════════════════════════════════════════════════════════
 
-# 可视化配置编辑器地址: https://sansan0.github.io/TrendRadar/
+# Visual config editor: https://sansan0.github.io/TrendRadar/
 #
-# 凡是左侧有 # 的都是仅供阅读的说明性文字
+# Lines beginning with # are comments only.
 #
-# 这个文件用来设置你想关注的新闻关键词。
-# 系统会自动抓取包含这些关键词的热榜新闻推送给你。
+# This file defines the news keywords you care about.
+# The system automatically crawls hot-list news containing these keywords and pushes them to you.
 #
-# 文件分为两个区域：
-#   [GLOBAL_FILTER]  - 全局过滤区：排除不想看的内容
-#   [WORD_GROUPS]    - 词组定义区：设置想关注的关键词
+# The file has two sections:
+#   [GLOBAL_FILTER]  - Global filter: exclude content you don't want to see
+#   [WORD_GROUPS]    - Word groups: define keywords you want to follow
 #
 # ═══════════════════════════════════════════════════════════════
 
 
 # ───────────────────────────────────────────────────────────────
-#                        全局过滤区
+#                        Global Filter
 # ───────────────────────────────────────────────────────────────
-# 在这里写入你不想看到的词，每行一个。
-# 包含这些词的新闻会被自动排除，不会出现在推送中。
+# Write words you don't want to see here, one per line.
+# News containing these words is auto-excluded and won't appear in pushes.
 #
-# 使用方法：
-#   震惊              直接写词，包含"震惊"的新闻会被过滤
-#   /赌博|博彩/       用 /.../ 包裹可以匹配多个词（用 | 分隔）
+# Usage:
+#   clickbait         A bare word; news containing "clickbait" is filtered
+#   /foo|bar/         Wrap with /.../ to match multiple words (separated by |)
 
 [GLOBAL_FILTER]
-# 过滤标题党
-震惊
+# Filter clickbait headlines
+/you won't believe|shocking|jaw-dropping/
 
 
 
 # ───────────────────────────────────────────────────────────────
-#                        词组定义区
+#                        Word Groups
 # ───────────────────────────────────────────────────────────────
-# 在这里写入你想关注的关键词。
-# 每个词组用空行分隔，同一词组内的关键词是"或"的关系。
+# Define the keywords you want to follow here.
+# Groups are separated by blank lines; keywords within a group are OR-related.
 #
 # ┌─────────────────────────────────────────────────────────────┐
-# │                      语法总览（快速参考）                      │
+# │                      Syntax cheat sheet                      │
 # └─────────────────────────────────────────────────────────────┘
 #
-# 关键词语法：
-#   关键词            普通关键词，标题包含即匹配
-#   /正则/            正则表达式匹配（自动忽略大小写）
-#   关键词 => 别名    给关键词指定显示别名
-#   [组别名]          词组第一行，给整组指定别名
-#   +关键词           必须词，所有必须词都要匹配才算匹配
-#   !关键词           过滤词，匹配则排除该条新闻（仅限当前词组）
-#   @数字             限制该词组最多显示多少条
+# Keyword syntax:
+#   keyword          Plain keyword; matched if the title contains it
+#   /regex/          Regex match (case-insensitive by default)
+#   keyword => alias Give a keyword a display alias
+#   [group alias]    First line of a group; names the whole group
+#   +keyword         Required word; all required words must match
+#   !keyword         Exclude word; matching excludes that news item (current group only)
+#   @number          Limit how many items this group shows
 #
-# 显示名称优先级：
-#   1. 有组别名 → 显示组别名
-#   2. 没有组别名 → 显示各行别名拼接（用 " / " 连接）
-#   3. 没有别名 → 显示关键词本身
+# Display-name priority:
+#   1. Group alias present → show the group alias
+#   2. No group alias → show the joined aliases of each line (joined with " / ")
+#   3. No alias → show the keyword itself
 #
 #
 # ┌─────────────────────────────────────────────────────────────┐
-# │                      基础用法（推荐新手）                      │
+# │                      Basics (recommended)                    │
 # └─────────────────────────────────────────────────────────────┘
 #
-# 1. 最简单：直接写关键词
+# 1. Simplest: a bare keyword
 #    ────────────────────
 #    华为
 #
-#    效果：匹配所有包含"华为"的新闻
+#    Effect: matches all news containing "华为"
 #
 #
-# 2. 多个关键词归为一组
+# 2. Multiple keywords grouped together
 #    ────────────────────
 #    华为
 #    鸿蒙
 #    任正非
 #
-#    效果：匹配包含"华为"或"鸿蒙"或"任正非"的新闻，统一显示为"华为 / 鸿蒙 / 任正非"
+#    Effect: matches news containing "华为" OR "鸿蒙" OR "任正非"; shown as "华为 / 鸿蒙 / 任正非"
 #
 #
-# 3. 给词组起个名字（推荐）
+# 3. Name the group (recommended)
 #    ────────────────────
 #    [华为]
 #    华为
 #    鸿蒙
 #    任正非
 #
-#    效果：同上，但显示名称为"华为"（更简洁）
+#    Effect: same as above, but the display name is "华为" (more concise)
 #
 #
 # ┌─────────────────────────────────────────────────────────────┐
-# │                      进阶用法（可选）                         │
+# │                      Advanced (optional)                     │
 # └─────────────────────────────────────────────────────────────┘
 #
-# 4. 用正则表达式匹配多个词（一行搞定）
+# 4. Match multiple words with a regex (one-liner)
 #    ────────────────────
 #    /华为|鸿蒙|任正非/ => 华为
 #
-#    效果：匹配包含"华为"或"鸿蒙"或"任正非"的新闻，显示为"华为"
-#    说明：/.../ 里用 | 分隔多个词，=> 后面是显示名称
+#    Effect: matches news containing "华为" OR "鸿蒙" OR "任正非"; shown as "华为"
+#    Note: separate words inside /.../ with |; the part after => is the display name
 #
-#    💡 不懂正则？问 AI：
-#       "帮我写一个正则表达式，匹配包含'华为'或'鸿蒙'或'任正非'的文本，
-#        格式要求：/正则/ => 显示名称"
+#    💡 Don't know regex? Ask the AI:
+#       "Write a regex that matches text containing '华为' or '鸿蒙' or '任正非'.
+#        Format: /regex/ => display_name"
 #
 #
-# 5. 精确匹配英文单词（避免误匹配）
+# 5. Match an English word precisely (avoid false matches)
 #    ────────────────────
 #    /\bAI\b/i => AI
 #
-#    说明：\b 表示单词边界，避免匹配到 "MAIL" 中的 "AI"
-#          /i 表示忽略大小写，"ai"、"AI"、"Ai" 都能匹配
+#    Note: \b is a word boundary, to avoid matching "AI" inside "MAIL"
+#          /i makes it case-insensitive: "ai", "AI", "Ai" all match
 #
-#    💡 不懂正则？问 AI：
-#       "帮我写一个正则表达式，精确匹配英文单词'AI'（不匹配 MAIL 中的 AI），
-#        忽略大小写，格式要求：/正则/i => 显示名称"
+#    💡 Don't know regex? Ask the AI:
+#       "Write a regex that precisely matches the English word 'AI' (not the AI in MAIL),
+#        case-insensitive. Format: /regex/i => display_name"
 #
 #
-# 6. 排除特定内容
+# 6. Exclude specific content
 #    ────────────────────
-#    [苹果公司]
+#    [Apple Inc.]
 #    苹果
 #    !水果
 #    !果园
 #
-#    效果：匹配"苹果"但排除包含"水果"或"果园"的新闻
-#    说明：! 开头的词表示"排除"
+#    Effect: matches "苹果" but excludes news containing "水果" or "果园"
+#    Note: words starting with ! mean "exclude"
 #
 #
-# 7. 限制显示条数
+# 7. Limit the number of items
 #    ────────────────────
-#    [科技新闻]
+#    [Tech News]
 #    科技
 #    @5
 #
-#    效果：最多显示 5 条匹配的新闻
-#    说明：@数字 表示限制条数
+#    Effect: shows at most 5 matching news items
+#    Note: @number limits the count
 #
 #
-# 8. 必须同时包含多个词
+# 8. Require multiple words at once
 #    ────────────────────
 #    +苹果
 #    +发布会
 #
-#    效果：必须同时包含"苹果"和"发布会"才匹配
-#    说明：+ 开头的词表示"必须包含"
+#    Effect: must contain both "苹果" and "发布会" to match
+#    Note: words starting with + mean "required"
 #
 # ───────────────────────────────────────────────────────────────
 
+
+# ───────────────────────────────────────────────────────────────
+#  Fork note (TrendRadar-thehype)
+# ───────────────────────────────────────────────────────────────
+#  Items come from the Bright Data sources in config.yaml → brightdata.
+#  Those queries/keywords decide WHAT is collected; the groups below decide
+#  what makes it into the digest and how it is grouped.
+#
+#  Tip for English: a plain word matches inside other words ("AI" matches
+#  "s-ai-d"), so use word boundaries:  /\bai\b/  instead of  ai
+#
+#  Leave [WORD_GROUPS] empty to receive everything that was collected.
+# ───────────────────────────────────────────────────────────────
+
 [WORD_GROUPS]
+[Artificial intelligence]
+/\bai\b/
+/artificial intelligence|machine learning|language model|\bLLM\b|chatbot/
+/\bOpenAI\b|\bAnthropic\b|\bDeepMind\b|\bGemini\b|\bChatGPT\b|\bClaude\b/
 
-# ═══════════════════════════════════════════════════════════════
-#                         企业与品牌
-# ═══════════════════════════════════════════════════════════════
+[Energy & climate]
+/renewable|solar|wind power|wind farm|battery|batteries|nuclear|grid|climate/
 
-/胖东来|于东来/ => 胖东来
+[Space]
+/\bspace\b|\bNASA\b|\bESA\b|SpaceX|rocket|satellite|orbit|moon|lunar|mars/
 
-/深度求索|幻方量化|梁文锋|\bDeepSeek\b/ => DeepSeek
-
-/华为|任正非|余承东|鸿蒙|海思|昇腾|鲲鹏|\bHUAWEI\b|\bHarmonyOS\b|\bHiSilicon\b/ => 华为
-
-/比亚迪|王传福|方程豹|腾势|仰望|弗迪|刀片电池|云辇|\bBYD\b|\bDenza\b|\bYangwang\b/ => 比亚迪
-
-/大疆|汪滔|灵眸|如影|\bDJI\b|\bRoboMaster\b|\bMavic\b|\bZenmuse\b/ => 大疆
-
-/宇树|王兴兴|\bUnitree\b/ => 宇树机器人
-
-/智元|灵犀|稚晖君|彭志辉|AgiBot/ => 智元机器人
-/众擎|EngineAI|赵同阳/ => 众擎机器人
-
-/黑神话|冯骥/ => 黑神话悟空
-
-/影之刃零|梁其伟/ => 影之刃零
-
-/三体|流浪地球|刘慈欣|郭帆/ => 三体/流浪地球
-
-申奥
-
-/京东|刘强东|\bJD\b|\bJingdong\b/ => 京东
-
-/字节|张一鸣|梁汝波|抖音|\bByteDance\b|\bTikTok\b|\bDouyin\b|\bLark\b|\bCapCut\b/ => 字节跳动
-
-/腾讯|鹅厂|马化腾|微信|QQ|天美|阅文集团|微众银行|\bTencent\b|\bPony Ma\b|\bWeChat\b|\bLightSpeed\b|\bWeBank\b/ => 腾讯
-
-/qwen|minimax|glm/ => 国产开源模型
-
-/特斯拉|马斯克|\bTesla\b|\bElon Musk\b|\bCybertruck\b|\bModel 3\b|\bModel Y\b|\bModel S\b|\bModel X\b|\bFSD\b/ => 特斯拉
-
-/英伟达|黄仁勋|\bNVIDIA\b|\bGeForce\b|\bRTX\b|\bCUDA\b|\bJensen Huang\b/ => 英伟达
-/苏姿丰|锐龙|霄龙|\bAMD\b|\bRyzen\b|\bEPYC\b|\bRadeon\b|\bLisa Su\b/ => AMD
-
-/微软|\bMicrosoft\b|\bWindows\b|\bAzure\b|\bSatya Nadella\b|\bCopilot\b/ => 微软
-/谷歌|皮查伊|安卓|油管|\bGoogle\b|\bAlphabet\b|\bAndroid\b|\bChrome\b|\bYouTube\b|\bGemini\b|\bDeepMind\b|\bWaymo\b/ => 谷歌
-/库克|\biPhone\b|\biPad\b|\bMacBook\b|\biOS\b|\bVision Pro\b|\bAirPods\b|\bApple\b|\bTim Cook\b/ => 苹果
-
-/\bOpenAI\b|\bChatGPT\b|\bSora\b|\bDALL-E\b|\bSam Altman\b|\bGreg Brockman\b/ => OpenAI
-/\bAnthropic\b|\bClaude\b|\bDario Amodei\b/ => Claude
-
-
-# ═══════════════════════════════════════════════════════════════
-#                         国家与地区
-# ═══════════════════════════════════════════════════════════════
-
-[中国]
-国产
-中国
-
-[东亚]
-日本
-朝鲜
-韩国
-
-[北美]
-美国
-加拿大
-
-[西欧]
-法国
-英国
-
-/俄罗斯|俄国/ => 俄罗斯
-
-印度
-
-
-# ═══════════════════════════════════════════════════════════════
-#                         科技领域
-# ═══════════════════════════════════════════════════════════════
-
-[AI 相关]
-/(?<![a-zA-Z])ai(?![a-zA-Z])/
-人工智能
-
-[芯片]
-芯片
-光刻机
-半导体
-
-/水电|雅鲁藏布江/ => 水电
-/光伏|太阳能/ => 光伏
-核能
-能源
-
-/自动驾驶|无人驾驶|智驾/ => 自动驾驶
-
-机器人
-/机械狗|四足/ => 机器狗
-具身智能
-
-/月球|登月|火星|宇宙|飞船|航天|空间站|卫星/ => 航天
-
-# 前沿科技
-量子
-脑机
-基因
-
-# 产业政策
-生产力
+[Science]
+/\bscience\b|scientists|researchers|study finds|discovery|breakthrough/

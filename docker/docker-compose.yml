@@ -1,6 +1,9 @@
 services:
   trendradar:
-    image: wantcat/trendradar:latest
+    # This fork builds from source: the upstream image (wantcat/trendradar) has no Bright Data support
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: trendradar
     restart: unless-stopped
 
@@ -12,7 +15,12 @@ services:
       - ../output:/app/output
 
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=${TZ:-UTC}
+      # Bright Data (fork addition)
+      - BRIGHTDATA_API_KEY=${BRIGHTDATA_API_KEY:-}
+      - BRIGHTDATA_SERP_ZONE=${BRIGHTDATA_SERP_ZONE:-}
+      - BRIGHTDATA_UNLOCKER_ZONE=${BRIGHTDATA_UNLOCKER_ZONE:-}
+      - DRY_RUN=${DRY_RUN:-}
       # Web 服务器
       - WEBSERVER_PORT=${WEBSERVER_PORT:-8080}
       # 通知渠道
@@ -68,5 +76,5 @@ services:
       - ../output:/app/output
 
     environment:
-      - TZ=Asia/Shanghai
+      - TZ=${TZ:-UTC}
       - MCP_PORT=${MCP_PORT:-3333}

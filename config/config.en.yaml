@@ -1,3 +1,6 @@
+# NOTE (TrendRadar-thehype fork): this is the unmodified upstream English template, kept for reference.
+# The app reads config/config.yaml, which is based on this file plus the Bright Data settings.
+
 # ═══════════════════════════════════════════════════════════════
 #                   TrendRadar Configuration
 #                      Version: 2.5.0
