@@ -40,7 +40,8 @@ permissions:
 jobs:
   crawl:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # up to 30 min waiting for Reddit/X/YouTube (brightdata.scraper_max_wait) + setup and sending
+    timeout-minutes: 45
 
     steps:
       - name: Checkout repository
