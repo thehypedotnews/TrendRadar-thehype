@@ -59,6 +59,27 @@ class BudgetExceeded(BrightDataError):
         super().__init__("budget", message, None, source)
 
 
+def _readable(text: str) -> str:
+    """Bright Data validation errors are JSON; turn them into 'invalid input: date: not allowed'."""
+    try:
+        import json
+
+        data = json.loads(text)
+    except ValueError:
+        return text
+    if isinstance(data, dict) and data.get("errors"):
+        parts = []
+        for err in data["errors"]:
+            if isinstance(err, (list, tuple)) and len(err) >= 2:
+                parts.append(f'["{err[0]}" {err[1]}]')
+            else:
+                parts.append(str(err))
+        return f"{data.get('error', 'invalid input')}: " + "; ".join(parts)
+    if isinstance(data, dict) and (data.get("error") or data.get("message")):
+        return str(data.get("error") or data.get("message"))
+    return text
+
+
 _BALANCE_HINTS = (
     "balance",
     "insufficient",
@@ -74,7 +95,7 @@ _BALANCE_HINTS = (
 def classify_http_error(status_code: int, body: str, source: str = "") -> BrightDataError:
     """Turn an HTTP error response from Bright Data into a BrightDataError."""
     text = (body or "").strip()
-    snippet = text[:300]
+    snippet = _readable(text)[:300]
     lower = text.lower()
 
     if status_code == 401:

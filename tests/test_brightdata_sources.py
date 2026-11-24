@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from trendradar.crawler.brightdata.models import title_key, url_key
 from trendradar.crawler.brightdata.sources.extract import extract_article, extract_listing
-from trendradar.crawler.brightdata.sources.serp import build_google_url, parse_serp
+from trendradar.crawler.brightdata.sources.serp import build_google_url, is_google_redirect, parse_serp, resolve_redirect
 from trendradar.crawler.brightdata.sources.social import parse_records, plan_jobs
 from trendradar.crawler.brightdata.timeparse import parse_time
 
@@ -71,6 +71,24 @@ class SerpTests(unittest.TestCase):
         self.assertEqual(items[0].source, "google")
         self.assertIsNone(items[0].published_at)
 
+    def test_redirects(self):
+        self.assertTrue(is_google_redirect("https://www.google.com/goto?url=CAES"))
+        self.assertTrue(is_google_redirect("https://news.google.com/url?q=https://a.com/x"))
+        self.assertFalse(is_google_redirect("https://news.mit.edu/2026/x"))
+        self.assertEqual(resolve_redirect("https://www.google.com/url?q=https://a.com/x&sa=U"), "https://a.com/x")
+        self.assertIsNone(resolve_redirect("https://a.com/x"))
+
+        class Resp:
+            status_code = 302
+            headers = {"Location": "https://real.example/article"}
+
+        class Sess:
+            def get(self, url, **kw):
+                assert kw["allow_redirects"] is False
+                return Resp()
+
+        self.assertEqual(resolve_redirect("https://www.google.com/goto?url=CAES", session=Sess()), "https://real.example/article")
+
     def test_non_json(self):
         with self.assertRaises(Exception):
             parse_serp("<html>", True, "q")
@@ -82,6 +100,7 @@ class SocialTests(unittest.TestCase):
                                     "posts_per_input": 5, "recency": "week"})
         self.assertEqual(jobs[0][1], "keyword")
         self.assertEqual(jobs[0][2][0], {"keyword": "llm", "date": "Past week", "num_of_posts": 5})
+        self.assertEqual(jobs[1][2][0]["sort_by"], "Hot")  # case-sensitive, Reddit's own label
         self.assertEqual(jobs[1][1], "subreddit_url")
         self.assertEqual(jobs[1][2][0]["url"], "https://www.reddit.com/r/technology/")
         self.assertEqual(jobs[1][2][1]["url"], "https://www.reddit.com/r/MachineLearning/")

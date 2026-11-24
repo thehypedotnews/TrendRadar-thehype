@@ -30,7 +30,16 @@ DEFAULT_DATASETS = {
     "youtube": "gd_lk56epmy2i5g7lzu0k",
 }
 
-REDDIT_DATES = {"hour": "Past hour", "day": "Past day", "week": "Past week", "month": "Past month"}
+# Values are case-sensitive and must match Reddit's own labels. The docs list "Past day",
+# but the API has rejected it, so each recency has fallbacks tried on a validation error.
+REDDIT_DATES = {
+    "hour": ["Past hour"],
+    "day": ["Past 24 hours", "Today", "Past day"],
+    "week": ["Past week"],
+    "month": ["Past month"],
+    "year": ["Past year"],
+}
+REDDIT_SORTS = {"hot": ["Hot", "hot"], "new": ["New", "new"], "top": ["Top", "top"], "rising": ["Rising", "rising"]}
 
 
 def _num(v: Any) -> float:
@@ -64,14 +73,14 @@ def plan_jobs(platform: str, cfg: Dict) -> List[Tuple[str, Optional[str], List[D
     limit = int(cfg.get("posts_per_input", 10))
     jobs = []
     if platform == "reddit":
-        date = REDDIT_DATES.get(str(cfg.get("recency", "day")).lower(), "Past day")
+        date = REDDIT_DATES.get(str(cfg.get("recency", "day")).lower(), REDDIT_DATES["day"])[0]
         kws = [k for k in (cfg.get("keywords") or []) if str(k).strip()]
         if kws:
             jobs.append(("keywords", "keyword",
                          [{"keyword": str(k), "date": date, "num_of_posts": limit} for k in kws], limit))
         subs = [s for s in (cfg.get("subreddits") or []) if str(s).strip()]
         if subs:
-            sort_by = str(cfg.get("sort_by", "hot"))
+            sort_by = REDDIT_SORTS.get(str(cfg.get("sort_by", "hot")).lower(), ["Hot"])[0]
             inputs = []
             for s in subs:
                 s = str(s).strip()
@@ -114,17 +123,55 @@ def trigger_platform(
             continue
         # shrink per-input limit so the job cannot exceed the remaining record budget
         limit = max(1, min(limit, left // len(inputs)))
-        try:
-            job = client.trigger(dataset_id, inputs, platform, discover_by=discover_by, limit_per_input=limit)
-            print(f"[Bright Data] {platform} {desc}: job {job.snapshot_id} started ({len(inputs)} inputs × ≤{limit})")
-            started.append((job, desc))
-        except BrightDataError as e:
-            e.source = e.source or platform
-            if e.is_fatal:
-                raise
-            print(f"[Bright Data] {platform} {desc} failed to start: {e.short()}")
-            errors.append(e)
+        attempts = _input_variants(platform, inputs)
+        for n, variant in enumerate(attempts, 1):
+            try:
+                job = client.trigger(dataset_id, variant, platform, discover_by=discover_by, limit_per_input=limit)
+                print(f"[Bright Data] {platform} {desc}: job {job.snapshot_id} started ({len(variant)} inputs × ≤{limit})")
+                started.append((job, desc))
+                break
+            except BrightDataError as e:
+                e.source = e.source or platform
+                if e.is_fatal or e.kind == "budget":
+                    raise
+                retry_field = _rejected_field(e)
+                if e.kind == "bad_request" and retry_field and n < len(attempts) and _differs(attempts[n - 1], attempts[n], retry_field):
+                    print(f"[Bright Data] {platform} {desc}: '{retry_field}' value rejected, trying the next accepted spelling")
+                    continue
+                print(f"[Bright Data] {platform} {desc} failed to start: {e.short()}")
+                errors.append(e)
+                break
     return started
+
+
+def _rejected_field(e: BrightDataError) -> str:
+    for field in ("date", "sort_by"):
+        if f'["{field}"' in e.message or f"'{field}'" in e.message or f"{field}:" in e.message:
+            return field
+    return ""
+
+
+def _differs(a: List[Dict], b: List[Dict], field: str) -> bool:
+    return any(x.get(field) != y.get(field) for x, y in zip(a, b))
+
+
+def _input_variants(platform: str, inputs: List[Dict]) -> List[List[Dict]]:
+    """The planned inputs first, then alternative spellings of case-sensitive values."""
+    variants = [inputs]
+    if platform != "reddit" or not inputs:
+        return variants
+    first = inputs[0]
+    if "date" in first:
+        for options in REDDIT_DATES.values():
+            if first["date"] in options:
+                for alt in options[options.index(first["date"]) + 1:]:
+                    variants.append([dict(i, date=alt) for i in inputs])
+    if "sort_by" in first:
+        for options in REDDIT_SORTS.values():
+            if first["sort_by"] in options:
+                for alt in options[options.index(first["sort_by"]) + 1:]:
+                    variants.append([dict(i, sort_by=alt) for i in inputs])
+    return variants
 
 
 # --------------------------------------------------------------- normalizing

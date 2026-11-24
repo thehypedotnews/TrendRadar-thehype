@@ -134,6 +134,22 @@ class CollectorTests(unittest.TestCase):
         self.assertTrue(res.all_failed)
 
 
+class RedditFallbackTests(unittest.TestCase):
+    def test_rejected_date_retries_next_spelling(self):
+        from trendradar.crawler.brightdata.sources.social import trigger_platform
+
+        bad = FakeResponse(400, json.dumps({"error": "Invalid input provided", "code": "validation_error",
+                                             "errors": [["date", "This value is not allowed"]]}))
+        session = FakeSession([("POST", "/datasets/v3/trigger", [bad, FakeResponse(200, {"snapshot_id": "s_ok"})])])
+        client = BrightDataClient("k", RequestBudget(), session=session, sleep=lambda s: None)
+        errors = []
+        jobs = trigger_platform(client, "reddit", {"keywords": ["ai"], "recency": "day"}, errors)
+        self.assertEqual(errors, [])
+        self.assertEqual(jobs[0][0].snapshot_id, "s_ok")
+        dates = [json.loads(c[2]["data"])["input"][0]["date"] for c in session.calls]
+        self.assertEqual(dates, ["Past 24 hours", "Today"])
+
+
 class RankingTests(unittest.TestCase):
     def test_example_from_plan(self):
         now = 1_000_000.0
