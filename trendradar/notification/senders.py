@@ -622,14 +622,17 @@ def send_to_telegram(
                     print(
                         f"{log_prefix}第 {i}/{len(batches)} 批次发送失败 [{report_type}]，错误：{result.get('description')}"
                     )
+                    _alerts.record_delivery_failure("Telegram", response.status_code, str(result.get("description")))
                     return False
             else:
                 print(
                     f"{log_prefix}第 {i}/{len(batches)} 批次发送失败 [{report_type}]，状态码：{response.status_code}"
                 )
+                _alerts.record_delivery_failure("Telegram", response.status_code, response.text)
                 return False
         except Exception as e:
             print(f"{log_prefix}第 {i}/{len(batches)} 批次发送出错 [{report_type}]：{e}")
+            _alerts.record_delivery_failure("Telegram", None, f"{e.__class__.__name__}: {e}")
             return False
 
     print(f"{log_prefix}所有 {len(batches)} 批次发送完成 [{report_type}]")

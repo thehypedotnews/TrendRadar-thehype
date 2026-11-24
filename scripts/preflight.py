@@ -11,8 +11,12 @@ list of missing secret NAMES (values are never printed). Also usable locally:
 Part of the thehypedotnews/TrendRadar-thehype fork of TrendRadar (GPL-3.0).
 """
 
+import json
 import os
+import re
 import sys
+import urllib.error
+import urllib.request
 
 try:
     import yaml
@@ -45,6 +49,26 @@ def is_set(name):
 def env_bool(name):
     v = os.environ.get(name, "").strip().lower()
     return None if not v else v in ("1", "true", "yes", "on")
+
+
+def check_telegram_token(token):
+    """Ask Telegram whether the token is valid (getMe). Returns a list of problems."""
+    try:
+        with urllib.request.urlopen(f"https://api.telegram.org/bot{token}/getMe", timeout=15) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        if data.get("ok"):
+            print(f"Telegram bot token OK (bot: @{data.get('result', {}).get('username', '?')})")
+            return []
+        return ["Telegram did not accept TELEGRAM_BOT_TOKEN"]
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 404):
+            return [f"Telegram does not know this TELEGRAM_BOT_TOKEN (HTTP {e.code}). Copy the token again from "
+                    "@BotFather (/mybots → your bot → API Token) and update the secret."]
+        print(f"Note: could not verify the Telegram token (HTTP {e.code}); continuing")
+        return []
+    except Exception as e:  # network problems should not block the run
+        print(f"Note: could not reach Telegram to verify the token ({e.__class__.__name__}); continuing")
+        return []
 
 
 def main():
@@ -98,6 +122,21 @@ def main():
     if ai_users and not (cfg.get("ai", {}) or {}).get("api_key"):
         required.append(("AI_API_KEY", "enabled in config: " + ", ".join(ai_users)))
 
+    # Telegram: catch the most common copy/paste mistakes before anything runs (values are never printed)
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat = os.environ.get("TELEGRAM_CHAT_ID", "").strip()
+    if token:
+        if token.lower().startswith("bot"):
+            problems.append("TELEGRAM_BOT_TOKEN starts with 'bot' — paste only the token itself, like 123456789:AAH...")
+        elif not re.fullmatch(r"\d{5,}:[A-Za-z0-9_-]{30,}", token):
+            problems.append("TELEGRAM_BOT_TOKEN does not look like a bot token (expected 123456789:AAH... from @BotFather; "
+                            "no quotes, spaces or extra text)")
+        else:
+            problems.extend(check_telegram_token(token))
+    if chat and not re.fullmatch(r"-?\d{5,}|@[A-Za-z0-9_]{5,}", chat):
+        problems.append("TELEGRAM_CHAT_ID should be a number like 123456789 (private chat) or -1001234567890 "
+                        "(channel/group), or @channelname")
+
     missing = [(n, why) for n, why in required if not is_set(n)]
     seen = set()
     print("Preflight check")
@@ -111,6 +150,7 @@ def main():
 
     for p in problems:
         print(f"::error::{p}")
+        print(f"PROBLEM: {p}")
     if missing:
         names = []
         for name, why in missing:

@@ -14,6 +14,41 @@ from typing import Dict, List, Optional
 import requests
 
 DRY_RUN = False  # set by trendradar.__main__ when --dry-run is active
+DELIVERY_FAILURES: List[str] = []  # filled by senders when a digest could not be delivered
+
+
+def telegram_hint(status: Optional[int], text: str = "") -> str:
+    """Plain-language reason for a failed Telegram call (never includes the token)."""
+    low = (text or "").lower()
+    if status == 404:
+        return ("Telegram says the bot token does not exist (HTTP 404). Check the TELEGRAM_BOT_TOKEN secret: it must be "
+                "exactly the token from @BotFather, like 123456789:AAH..., without 'bot' in front, quotes or spaces.")
+    if status == 401:
+        return "Telegram rejected the bot token (HTTP 401). Create a new token with @BotFather (/token) and update TELEGRAM_BOT_TOKEN."
+    if "chat not found" in low:
+        return ("Telegram cannot find the chat (TELEGRAM_CHAT_ID). For a private chat, open the bot and press Start first; "
+                "for a channel or group, add the bot as an admin and use the id starting with -100.")
+    if "bot was blocked" in low:
+        return "The bot was blocked in this chat. Unblock it / press Start again."
+    if "not enough rights" in low or "have no rights" in low:
+        return "The bot is not allowed to post in this chat. Make it an admin of the channel/group."
+    if status is None:
+        return f"could not reach Telegram: {redact(text)[:200]}"
+    return f"Telegram error (HTTP {status}): {redact(text)[:200]}"
+
+
+_TOKEN_RE = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
+
+
+def redact(text: str) -> str:
+    """Hide Telegram bot tokens that may appear inside error messages (e.g. in a URL)."""
+    return _TOKEN_RE.sub("bot***", text or "")
+
+
+def record_delivery_failure(channel: str, status: Optional[int], text: str = "") -> None:
+    text = redact(text)
+    hint = telegram_hint(status, text) if channel == "Telegram" else f"HTTP {status}: {(text or '')[:200]}"
+    DELIVERY_FAILURES.append(f"{channel}: {hint}")
 
 
 def run_url() -> str:

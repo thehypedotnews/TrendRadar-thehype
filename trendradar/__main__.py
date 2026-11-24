@@ -2049,6 +2049,14 @@ class NewsAnalyzer:
                 schedule=schedule,
             )
 
+            # Fork addition: a digest that could not be delivered must turn the run red
+            from trendradar.notification import alerts as _alerts
+
+            if _alerts.DELIVERY_FAILURES:
+                for line in _alerts.DELIVERY_FAILURES:
+                    print(f"❌ Digest NOT delivered — {line}")
+                self.exit_code = 1
+
             # Fork addition: some (not all) Bright Data sources failed -> short warning after the digest
             if bd is not None and not bd.all_failed and bd.errors and self.ctx.config["BRIGHTDATA"].get(
                 "alert_on_partial_failure", True
