@@ -139,6 +139,22 @@ jobs:
             exit 1
           fi
 
+      # ----------------------------------------------------------------------------
+      # History between runs (fork addition)
+      # Without R2/S3 secrets, the output/ folder (news databases + Bright Data state)
+      # is kept in the GitHub Actions cache. With R2/S3 secrets set, R2 is used instead
+      # and this cache simply stays small.
+      # ----------------------------------------------------------------------------
+      - name: Restore history (GitHub cache)
+        if: success()
+        uses: actions/cache/restore@v4
+        with:
+          path: output
+          key: trendradar-history-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            trendradar-history-${{ github.ref_name }}-
+            trendradar-history-
+
       - name: Run crawler
         if: success()
         env:
@@ -179,6 +195,14 @@ jobs:
           S3_REGION: ${{ secrets.S3_REGION }}
           GITHUB_ACTIONS: true
         run: uv run python -m trendradar
+
+      - name: Save history (GitHub cache)
+        # also after a failed run, so the daily request counter is not lost; never after a dry run
+        if: always() && !inputs.dry_run && hashFiles('output/**') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: output
+          key: trendradar-history-${{ github.ref_name }}-${{ github.run_id }}
 
       # --------------------------------------------------------------------------------
       # ☁️ CLOUDFLARE PAGES DEPLOY / 部署到 Cloudflare Pages（可选）
