@@ -48,7 +48,7 @@ You need about 30 minutes and three accounts: **GitHub**, **Telegram** and **Bri
 2. Pick your account as **Owner** and give the repository a name.
 3. Choose **Public** or **Private**:
    - **Public:** Actions minutes are free and unlimited.
-   - **Private:** fine too; 3 runs a day use only a few minutes of the free monthly allowance.
+   - **Private:** fine too, but runs wait up to 30 minutes for Reddit/X/YouTube, which can use up the free monthly Actions minutes (see [Cost](#cost)).
 
    Your secrets stay hidden either way.
 4. Click **Create repository**.
@@ -261,6 +261,8 @@ limits:
   max_records_per_day: 600
 ```
 
+**GitHub Actions minutes.** A run waits up to 30 minutes for the Reddit/X/YouTube scrapers (`brightdata.scraper_max_wait`). In a **public** repository Actions minutes are free and unlimited. In a **private** one, GitHub Free includes 2,000 minutes a month, and 3 long runs a day can use more than that. In that case, lower `scraper_max_wait` (unfinished jobs are then collected by the next run) or make the repository public.
+
 Every run logs its usage, e.g. `usage this run: 5 requests, 30 records` and `usage today: 15 requests / 120`. Attempts that fail are counted too, so the limits err on the safe side.
 
 ---
@@ -324,7 +326,7 @@ uv run python -m trendradar --dry-run
 | Alert mentions **balance** | Top up your Bright Data balance. |
 | Alert says **limit in config.yaml was reached** | Raise `brightdata.limits` or run less often. |
 | Run is green but **no digest** | Nothing new matched your keyword groups. In the log, look for `collected N items → M after dedup/filters` and the keyword-matching lines. Try a dry run with an empty `[WORD_GROUPS]`. |
-| Scraper step says **not ready after 420s** | Bright Data was slow. The job keeps running on their side. Raise `brightdata.scraper_max_wait` if it repeats. |
+| Scraper step says **not ready yet** | Bright Data was slow. The job keeps running on their side and the next run collects its results. The log line shows what Bright Data reported (`status=…`). |
 | Scheduled runs stopped | Run **Check In** (Step 9), then re-enable **Get Hot News** if GitHub disabled it. |
 
 ---

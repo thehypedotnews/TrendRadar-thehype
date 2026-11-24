@@ -145,20 +145,28 @@ class BrightDataClient:
         return PendingJob(source, dataset_id, snapshot_id, time.time())
 
     def wait_for_jobs(
-        self, jobs: List[PendingJob], max_wait: int = 420, poll_interval: int = 10
+        self, jobs: List[PendingJob], max_wait: int = 420, poll_interval: int = 10,
+        optional_ids: Optional[set] = None,
     ) -> Dict[str, Any]:
         """Poll all jobs until ready, failed or out of time.
 
+        Jobs in optional_ids (left over from earlier runs) are collected if they are ready,
+        but the run does not keep waiting once only such jobs are left.
         Returns {snapshot_id: list_of_records | BrightDataError}.
         """
+        optional_ids = optional_ids or set()
         results: Dict[str, Any] = {}
         pending = {j.snapshot_id: j for j in jobs}
         deadline = time.time() + max_wait
+        last_progress: Dict[str, Dict] = {}
+        next_report = time.time() + 300
         while pending:
             for sid, job in list(pending.items()):
                 try:
                     resp = self._send("GET", f"/datasets/v3/progress/{sid}", job.source)
-                    status = (resp.json() or {}).get("status", "")
+                    progress = resp.json() or {}
+                    last_progress[sid] = progress if isinstance(progress, dict) else {}
+                    status = last_progress[sid].get("status", "")
                 except BrightDataError as e:
                     results[sid] = e
                     del pending[sid]
@@ -176,16 +184,22 @@ class BrightDataClient:
                     del pending[sid]
             if not pending:
                 break
-            if time.time() >= deadline:
+            only_optional = all(sid in optional_ids for sid in pending)
+            if time.time() >= deadline or only_optional:
                 for sid, job in pending.items():
+                    age_min = (time.time() - job.started_at) / 60
                     results[sid] = BrightDataError(
                         "timeout",
-                        f"snapshot {sid} not ready after {max_wait}s; it keeps running at Bright Data "
-                        f"(raise brightdata.scraper_max_wait if this repeats)",
+                        f"snapshot {sid} not ready yet (started {age_min:.0f} min ago; "
+                        f"Bright Data says: {_progress_summary(last_progress.get(sid))}); it keeps running at Bright Data",
                         None,
                         job.source,
                     )
                 break
+            if time.time() >= next_report:
+                for sid, job in pending.items():
+                    print(f"[Bright Data] waiting for {job.source} job {sid}: {_progress_summary(last_progress.get(sid))}")
+                next_report = time.time() + 300
             self._sleep(poll_interval)
         return results
 
@@ -210,6 +224,17 @@ class BrightDataClient:
             return resp.json()
         except (BrightDataError, ValueError):
             return None
+
+
+def _progress_summary(progress: Optional[Dict]) -> str:
+    """Short, secret-free description of a /progress answer for the log."""
+    if not progress:
+        return "no status received"
+    parts = [f"status={progress.get('status', '?')}"]
+    for key in ("records", "rows", "errors", "collection_duration", "dataset_size"):
+        if key in progress and progress[key] not in (None, ""):
+            parts.append(f"{key}={progress[key]}")
+    return ", ".join(parts)
 
 
 def _parse_records(text: str) -> List[Any]:

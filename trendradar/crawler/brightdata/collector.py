@@ -195,7 +195,11 @@ class BrightDataCollector:
                 print(f"[Bright Data] picking up {len(carried)} scraper job(s) left running by an earlier run")
         all_jobs = carried + jobs
         if all_jobs and res.fatal is None:
-            outcome = client.wait_for_jobs([j for j, _ in all_jobs], max_wait=int(self.cfg.get("scraper_max_wait", 420)))
+            outcome = client.wait_for_jobs(
+                [j for j, _ in all_jobs],
+                max_wait=int(self.cfg.get("scraper_max_wait", 1800)),
+                optional_ids={j.snapshot_id for j, _ in carried},
+            )
             for job, desc in all_jobs:
                 got = outcome.get(job.snapshot_id)
                 is_carried = (job, desc) in carried

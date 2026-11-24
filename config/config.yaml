@@ -134,7 +134,8 @@ brightdata:
 
   max_age_hours: 48                   # drop items published longer ago than this
   skip_seen_before_today: true        # don't show again what was already collected on an earlier day
-  scraper_max_wait: 600               # seconds to wait for Reddit/X/YouTube jobs; unfinished jobs are collected by the next run
+  scraper_max_wait: 1800              # seconds (30 min) to wait for Reddit/X/YouTube jobs, so one run delivers
+                                      # everything it asked for; jobs still unfinished are collected by the next run
   request_timeout: 60                 # seconds per HTTP call
 
   ranking:                            # score = 100 × (freshness·F + engagement·E + recurrence·R)
