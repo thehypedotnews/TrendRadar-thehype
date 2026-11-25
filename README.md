@@ -15,7 +15,7 @@
 > [!NOTE]
 > **Fork of [TrendRadar](https://github.com/sansan0/TrendRadar) by [sansan0](https://github.com/sansan0)**, modified by thehypedotnews in November 2026.
 > GPL-3.0 like the original. All upstream copyright notices are kept.
-> Original docs: [README-EN.md](README-EN.md) (English) · [README-ZH.md](README-ZH.md) (中文).
+> Original docs: [TrendRadar README](https://github.com/sansan0/TrendRadar#readme) (中文) · [English](https://github.com/sansan0/TrendRadar/blob/master/README-EN.md).
 
 ---
 
@@ -227,7 +227,7 @@ A dry run still makes (billed) Bright Data requests, but never sends to Telegram
 
 ## 📜 License, credits, terms
 
-- **Original project:** [**TrendRadar**](https://github.com/sansan0/TrendRadar) © [sansan0](https://github.com/sansan0) and contributors. It provides the filtering, reports, notification channels, AI features and MCP server, documented in [README-EN.md](README-EN.md) / [README-ZH.md](README-ZH.md). Its hot-list data source is [newsnow](https://github.com/ourongxing/newsnow) by ourongxing.
+- **Original project:** [**TrendRadar**](https://github.com/sansan0/TrendRadar) © [sansan0](https://github.com/sansan0) and contributors. It provides the filtering, reports, notification channels, AI features and MCP server, documented in the [upstream README](https://github.com/sansan0/TrendRadar#readme) ([English](https://github.com/sansan0/TrendRadar/blob/master/README-EN.md)). Its hot-list data source is [newsnow](https://github.com/ourongxing/newsnow) by ourongxing.
 - **This fork (thehypedotnews, November 2026)** adds:
   - the Bright Data source layer (`trendradar/crawler/brightdata/`);
   - the ranking (`trendradar/core/ranking.py`);
