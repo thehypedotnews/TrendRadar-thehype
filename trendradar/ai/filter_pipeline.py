@@ -576,6 +576,13 @@ class AIFilterPipeline:
                     hotlist_titles.append(title_entry)
 
             if hotlist_titles:
+                # Fork addition: order Bright Data items inside a tag by the new ranking
+                from trendradar.core.ranking import lookup_score
+
+                scored = [lookup_score(t.get("url", "")) for t in hotlist_titles]
+                if any(s is not None for s in scored):
+                    order = sorted(range(len(hotlist_titles)), key=lambda i: -(scored[i] or 0.0))
+                    hotlist_titles = [hotlist_titles[i] for i in order]
                 if self._max_news > 0:
                     hotlist_titles = hotlist_titles[:self._max_news]
                 hotlist_stats.append({
